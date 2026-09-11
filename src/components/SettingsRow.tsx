@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { Pressable, View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../theme';
 import { spacing, typography } from '../theme/colors';
 
@@ -18,12 +18,18 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
 }) => {
   const { colors } = useTheme();
 
+  const Container = onPress ? Pressable : View;
+
   return (
-    <View
-      style={[
+    <Container
+      onPress={onPress}
+      style={({ pressed }) => [
         styles.container,
         { borderBottomColor: colors.border },
+        onPress && pressed && styles.pressed,
       ]}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole={onPress ? 'button' : undefined}
     >
       <Text style={[styles.label, { color: colors.primaryText }]}>
         {label}
@@ -40,7 +46,7 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
           ›
         </Text>
       )}
-    </View>
+    </Container>
   );
 };
 
@@ -51,6 +57,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
+  },
+  pressed: {
+    backgroundColor: 'rgba(128, 128, 128, 0.1)',
   },
   label: {
     fontSize: typography.fontSizes.md,

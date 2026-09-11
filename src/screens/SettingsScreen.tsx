@@ -2,9 +2,10 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useTheme, useSettingsStore } from '../theme';
+import { useTheme } from '../theme';
+import { useSettingsStore } from '../store';
 import { SettingsRow } from '../components/SettingsRow';
-import { spacing, typography, borderRadius } from '../theme/colors';
+import { spacing, typography, borderRadius, colors } from '../theme/colors';
 
 type RootStackParamList = {
   Landing: undefined;
@@ -25,6 +26,34 @@ export const SettingsScreen: React.FC = () => {
     }
   };
 
+  // Cycle through theme options: dark -> light -> oled -> dark
+  const cycleTheme = () => {
+    const themes: ('dark' | 'light' | 'oled')[] = ['dark', 'light', 'oled'];
+    const currentIndex = themes.indexOf(settings.theme);
+    const nextIndex = (currentIndex + 1) % themes.length;
+    updateSettings({ theme: themes[nextIndex] });
+  };
+
+  // Cycle through accent colors
+  const cycleAccentColor = () => {
+    const accentColors = ['#00F5D4', '#00FFA3', '#0066FF', '#7B2CBF', '#FF6B35', '#00D26A'];
+    const currentIndex = accentColors.indexOf(settings.accentColor);
+    const nextIndex = (currentIndex + 1) % accentColors.length;
+    updateSettings({ accentColor: accentColors[nextIndex] });
+  };
+
+  // Cycle through font options
+  const cycleFont = () => {
+    const fonts: ('inter' | 'jetbrains-mono' | 'roboto-mono')[] = ['inter', 'jetbrains-mono', 'roboto-mono'];
+    const currentIndex = fonts.indexOf(settings.fontFamily);
+    const nextIndex = (currentIndex + 1) % fonts.length;
+    updateSettings({ fontFamily: fonts[nextIndex] });
+  };
+
+  const formatFontName = (font: string): string => {
+    return font.replace('-', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
@@ -34,7 +63,7 @@ export const SettingsScreen: React.FC = () => {
           accessibilityLabel="Go back"
           accessibilityRole="button"
         >
-          <Text style={[styles.backButton, { color: colors.accentColor }]}>
+          <Text style={[styles.backButton, { color: settings.accentColor }]}>
             ← Back
           </Text>
         </Pressable>
@@ -57,21 +86,21 @@ export const SettingsScreen: React.FC = () => {
             <SettingsRow
               label="Theme"
               value={settings.theme.charAt(0).toUpperCase() + settings.theme.slice(1)}
-              onPress={() => {}}
+              onPress={cycleTheme}
               accessibilityLabel="Change theme"
             />
             
             <SettingsRow
               label="Accent Color"
               value={settings.accentColor}
-              onPress={() => {}}
+              onPress={cycleAccentColor}
               accessibilityLabel="Change accent color"
             />
             
             <SettingsRow
               label="Font"
-              value={settings.fontFamily.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-              onPress={() => {}}
+              value={formatFontName(settings.fontFamily)}
+              onPress={cycleFont}
               accessibilityLabel="Change font"
             />
           </View>

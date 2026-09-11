@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { MMKV } from 'react-native-mmkv';
+import { createMMKV } from 'react-native-mmkv';
 import { AppSettings, DEFAULT_SETTINGS, TimerState, TimerStatus } from '../types';
 
 // Initialize MMKV storage
-const storage = new MMKV();
+const storage = createMMKV();
 
 // Create MMKV adapter for Zustand persistence
 const mmkvStorage = {
@@ -16,7 +16,7 @@ const mmkvStorage = {
     return value ?? null;
   },
   removeItem: (key: string) => {
-    storage.delete(key);
+    storage.remove(key);
   },
 };
 

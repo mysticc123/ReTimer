@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { activateKeepAwakeAsync, deactivateKeepAwakeAsync } from 'expo-keep-awake';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { StatusBar } from 'expo-status-bar';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSettingsStore, useTimerStore } from '../store';
@@ -114,11 +114,11 @@ export const ActiveTimerScreen: React.FC = () => {
     if (settings.keepScreenAwake && isRunning) {
       activateKeepAwakeAsync().catch(() => {});
     } else {
-      deactivateKeepAwakeAsync().catch(() => {});
+      deactivateKeepAwake().catch(() => {});
     }
 
     return () => {
-      deactivateKeepAwakeAsync().catch(() => {});
+      deactivateKeepAwake().catch(() => {});
     };
   }, [isRunning, settings.keepScreenAwake]);
 
