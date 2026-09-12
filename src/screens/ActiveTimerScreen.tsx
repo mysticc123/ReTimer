@@ -270,6 +270,7 @@ const styles = StyleSheet.create({
   },
   timerContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
   },
   timerText: {
     fontWeight: typography.fontWeights.bold,
@@ -278,13 +279,13 @@ const styles = StyleSheet.create({
   },
   modeText: {
     fontSize: typography.fontSizes.md,
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
     textTransform: 'uppercase' as const,
     letterSpacing: 2,
   },
   statusText: {
     fontSize: typography.fontSizes.sm,
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
   },
   roundIndicator: {
     position: 'absolute',
