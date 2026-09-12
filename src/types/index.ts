@@ -72,7 +72,11 @@ export interface AppSettings {
   // Timer defaults
   pomodoroFocusMs: number;
   pomodoroBreakMs: number;
+  countdownDurationMs: number;  // Independent countdown duration
   countdownPresetsMs: number[];
+  intervalWorkMs: number;       // Independent interval work duration
+  intervalRestMs: number;       // Independent interval rest duration
+  intervalRounds: number;       // Independent interval rounds
   autoStartNextInterval: boolean;
   timerCompletionBehavior: 'stop' | 'repeat' | 'continue';
 
@@ -107,6 +111,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   animationIntensity: 'low',
   pomodoroFocusMs: 25 * 60 * 1000,
   pomodoroBreakMs: 5 * 60 * 1000,
+  countdownDurationMs: 10 * 60 * 1000,  // Default 10 minutes for countdown
   countdownPresetsMs: [
     5 * 60 * 1000,
     15 * 60 * 1000,
@@ -114,6 +119,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     45 * 60 * 1000,
     60 * 60 * 1000,
   ],
+  intervalWorkMs: 30 * 1000,   // Default 30 seconds work
+  intervalRestMs: 10 * 1000,   // Default 10 seconds rest
+  intervalRounds: 8,           // Default 8 rounds
   autoStartNextInterval: false,
   timerCompletionBehavior: 'stop',
   soundEnabled: true,

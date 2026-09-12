@@ -42,17 +42,17 @@ export const LandingScreen: React.FC = () => {
         durationMs = settings.pomodoroFocusMs;
         break;
       case 'countdown':
-        durationMs = settings.countdownPresetsMs[0] ?? 5 * 60 * 1000;
+        durationMs = settings.countdownDurationMs;
         break;
       case 'countup':
         durationMs = 0; // Will be handled specially
         break;
       case 'interval':
-        durationMs = 30 * 1000; // Work phase default
+        durationMs = settings.intervalWorkMs;
         intervalConfig = {
-          workMs: 30 * 1000,
-          restMs: 10 * 1000,
-          rounds: 8,
+          workMs: settings.intervalWorkMs,
+          restMs: settings.intervalRestMs,
+          rounds: settings.intervalRounds,
         };
         break;
     }
@@ -120,7 +120,7 @@ export const LandingScreen: React.FC = () => {
           mode="countdown"
           title="Countdown"
           subtitle="Custom duration"
-          duration={formatDuration(settings.countdownPresetsMs[0] ?? 5 * 60 * 1000)}
+          duration={formatDuration(settings.countdownDurationMs)}
           isSelected={false}
           onPress={() => handleSelectTimer('countdown')}
           accessibilityLabel="Start Countdown timer"
@@ -140,7 +140,7 @@ export const LandingScreen: React.FC = () => {
           mode="interval"
           title="Interval"
           subtitle="Work/Rest cycles"
-          duration={`${settings.pomodoroFocusMs / 1000 / 60}m work`}
+          duration={`${Math.round(settings.intervalWorkMs / 1000)}s work`}
           isSelected={false}
           onPress={() => handleSelectTimer('interval')}
           accessibilityLabel="Start Interval timer"
