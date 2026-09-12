@@ -168,7 +168,7 @@ export const ActiveTimerScreen: React.FC = () => {
   const timeString = formatTime(displayTime);
   const fontSize = timeString.length > 8 
     ? typography.fontSizes.xxxl 
-    : typography.fontSizes.display * (settings.largerText ? 1.2 : 1);
+    : typography.fontSizes.display * settings.fontScale;
 
   return (
     <>

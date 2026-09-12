@@ -1,59 +1,67 @@
-```gitignore
+```
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
+
 # Dependencies
 node_modules/
+venv/
+.venv/
+.env
+.env.local
+*.env.*
 
-# Build outputs
+# Build directories
 dist/
 build/
 target/
+coverage/
+htmlcov/
+.mypy_cache/
+.pytest_cache/
+.gradle/
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-.ENV
-.env
-.env.local
-.env.*
-.venv/
-venv/
-ENV/
-.env.dSYM/
-
-# Logs
-*.log
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# IDE
+# Editors and IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
-
-# Coverage
-.coverage
-coverage/
-htmlcov/
-
-# Temporary files
 *.tmp
-*.temp
+
+# System files
+.DS_Store
+Thumbs.db
+*.log
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
-
-Wait, I need to reconsider this. Looking at the input again, only `src/screens/SettingsScreen.tsx` was modified, which is a TypeScript React file. There are no build artifacts, dependencies, or temporary files in the change list that would require ignoring.
-
-(empty)

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -6,6 +6,7 @@ import { useTheme } from '../theme';
 import { useSettingsStore } from '../store';
 import { SettingsRow } from '../components/SettingsRow';
 import { spacing, typography, borderRadius, colors } from '../theme/colors';
+import { FONT_SCALES, getScaledSize } from '../utils/fontScale';
 
 type RootStackParamList = {
   Landing: undefined;
@@ -88,6 +89,21 @@ export const SettingsScreen: React.FC = () => {
       return `${hours}h ${remainingMinutes > 0 ? `${remainingMinutes}m` : ''}`;
     }
     return `${minutes} min`;
+  };
+
+  // Font scale control handlers
+  const cycleFontScale = () => {
+    const currentIndex = FONT_SCALES.indexOf(settings.fontScale as any);
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % FONT_SCALES.length;
+    updateSettings({ fontScale: FONT_SCALES[nextIndex] });
+  };
+
+  const selectFontScale = (scale: number) => {
+    updateSettings({ fontScale: scale });
+  };
+
+  const formatFontScaleLabel = (scale: number): string => {
+    return `${Math.round(scale * 100)}%`;
   };
 
   return (
@@ -246,12 +262,58 @@ export const SettingsScreen: React.FC = () => {
               accessibilityLabel="Toggle reduced motion"
             />
             
-            <SettingsRow
-              label="Larger Text"
-              value={settings.largerText}
-              onPress={() => toggleSetting('largerText', settings.largerText)}
-              accessibilityLabel="Toggle larger text"
-            />
+            {/* Font Scale Control */}
+            <View style={styles.fontScaleSection}>
+              <Text style={[styles.fontScaleLabel, { color: colors.primaryText }]}>
+                Text Size
+              </Text>
+              
+              {/* Scale Selector */}
+              <View style={styles.fontScaleSelector}>
+                {FONT_SCALES.map((scale) => (
+                  <Pressable
+                    key={scale}
+                    style={[
+                      styles.fontScaleButton,
+                      settings.fontScale === scale && {
+                        backgroundColor: settings.accentColor,
+                      },
+                    ]}
+                    onPress={() => selectFontScale(scale)}
+                    accessibilityLabel={`Set text size to ${formatFontScaleLabel(scale)}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: settings.fontScale === scale }}
+                  >
+                    <Text
+                      style={[
+                        styles.fontScaleButtonText,
+                        {
+                          color: settings.fontScale === scale ? colors.background : colors.secondaryText,
+                          fontSize: getScaledSize(12, scale),
+                        },
+                      ]}
+                    >
+                      Aa
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              
+              {/* Live Preview */}
+              <View style={styles.fontScalePreview}>
+                <Text
+                  style={[
+                    styles.fontScalePreviewText,
+                    {
+                      color: colors.primaryText,
+                      fontSize: getScaledSize(16, settings.fontScale),
+                    },
+                  ]}
+                >
+                  Preview Text
+                </Text>
+              </View>
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -299,5 +361,41 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: borderRadius.lg,
     overflow: 'hidden',
+  },
+  fontScaleSection: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  fontScaleLabel: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    marginBottom: spacing.sm,
+  },
+  fontScaleSelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  fontScaleButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: '#1F1F1F',
+  },
+  fontScaleButtonText: {
+    fontWeight: typography.fontWeights.medium,
+  },
+  fontScalePreview: {
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#1F1F1F',
+  },
+  fontScalePreviewText: {
+    fontWeight: typography.fontWeights.regular,
+    lineHeight: 24,
   },
 });

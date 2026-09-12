@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { createMMKV } from 'react-native-mmkv';
 import { AppSettings, DEFAULT_SETTINGS, TimerState, TimerStatus } from '../types';
+import { migrateLegacyFontSize } from '../utils/fontScale';
 
 // Initialize MMKV storage
 const storage = createMMKV();
@@ -33,7 +34,31 @@ interface SettingsState {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      settings: DEFAULT_SETTINGS,
+      settings: (() => {
+        // Migration: convert legacy largerText boolean to fontScale number
+        const storedData = mmkvStorage.getItem('retimer-settings');
+        if (storedData) {
+          try {
+            const parsed = JSON.parse(storedData);
+            if (parsed.state?.settings) {
+              const legacyLargerText = parsed.state.settings.largerText;
+              if (legacyLargerText !== undefined) {
+                // Migrate the old boolean to new fontScale
+                const fontScale = migrateLegacyFontSize(legacyLargerText);
+                return {
+                  ...DEFAULT_SETTINGS,
+                  ...parsed.state.settings,
+                  largerText: undefined, // Remove old property
+                  fontScale, // Set new property
+                };
+              }
+            }
+          } catch (e) {
+            // If parsing fails, use defaults
+          }
+        }
+        return DEFAULT_SETTINGS;
+      })(),
       updateSettings: (updates) =>
         set((state) => ({
           settings: { ...state.settings, ...updates },
