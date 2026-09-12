@@ -202,33 +202,47 @@ export const useTimerStore = create<TimerStoreState>()(
         const { timer } = get();
         if (!timer.intervalConfig) return;
 
-        const nextRound = timer.currentRound + 1;
-        const isWorkPhase = !timer.isWorkPhase;
-        const durationMs = isWorkPhase 
-          ? timer.intervalConfig.workMs 
-          : timer.intervalConfig.restMs;
-
-        if (nextRound >= timer.totalRounds) {
-          // All rounds completed
+        const nextIsWorkPhase = !timer.isWorkPhase;
+        let nextRound = timer.currentRound;
+        
+        // If we just finished a rest phase, increment the round counter
+        if (!timer.isWorkPhase) {
+          nextRound = timer.currentRound + 1;
+        }
+        
+        // Check if all rounds are completed
+        if (nextRound >= timer.totalRounds && !nextIsWorkPhase) {
+          // All rounds completed - we finished the last rest phase
           set({
             timer: {
               ...timer,
               status: 'completed',
               targetTimestamp: null,
+              currentRound: nextRound,
+              isWorkPhase: false,
             },
           });
           return;
         }
+        
+        // Determine duration for next phase
+        const durationMs = nextIsWorkPhase 
+          ? timer.intervalConfig.workMs 
+          : timer.intervalConfig.restMs;
+
+        const now = Date.now();
+        const targetTimestamp = now + durationMs;
 
         set({
           timer: {
             ...timer,
             currentRound: nextRound,
-            isWorkPhase,
+            isWorkPhase: nextIsWorkPhase,
             durationMs,
             elapsedTimeMs: 0,
-            status: 'idle',
-            targetTimestamp: null,
+            status: 'running',
+            targetTimestamp,
+            pausedAt: null,
           },
         });
       },
