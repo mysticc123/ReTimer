@@ -49,7 +49,7 @@ export const TimerCard: React.FC<TimerCardProps> = ({
             style={[
               styles.title,
               {
-                color: isSelected ? colors.black : colors.primaryText,
+                color: isSelected ? '#000000' : colors.primaryText,
               },
             ]}
           >
@@ -61,7 +61,7 @@ export const TimerCard: React.FC<TimerCardProps> = ({
               style={[
                 styles.subtitle,
                 {
-                  color: isSelected ? colors.black : colors.secondaryText,
+                  color: isSelected ? '#000000' : colors.secondaryText,
                 },
               ]}
             >

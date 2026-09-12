@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { activateKeepAwakeAsync, deactivateKeepAwakeAsync } from 'expo-keep-awake';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { StatusBar } from 'expo-status-bar';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSettingsStore, useTimerStore } from '../store';
@@ -33,7 +33,7 @@ const formatTime = (ms: number): string => {
 export const ActiveTimerScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const { settings } = useSettingsStore();
-  const { timer, startTimer, pauseTimer, resumeTimer, resetTimer, getRemainingTime } = useTimerStore();
+  const { timer, startTimer, pauseTimer, resumeTimer, resetTimer, getRemainingTime, nextRound } = useTimerStore();
   
   const [displayTime, setDisplayTime] = useState<number>(timer.durationMs);
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -48,10 +48,19 @@ export const ActiveTimerScreen: React.FC = () => {
       const remaining = Math.max(0, timer.targetTimestamp - Date.now());
       setDisplayTime(remaining);
       
+      // Check for interval completion and auto-advance
       if (remaining <= 0) {
-        setIsRunning(false);
-        if (settings.hapticsEnabled) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        if (timer.mode === 'interval' && timer.intervalConfig) {
+          // Auto-advance to next phase/round
+          nextRound();
+          // Continue running animation for next phase
+          animationRef.current = requestAnimationFrame(updateDisplayTime);
+        } else {
+          // Timer completed
+          setIsRunning(false);
+          if (settings.hapticsEnabled) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          }
         }
       } else {
         animationRef.current = requestAnimationFrame(updateDisplayTime);
@@ -65,7 +74,7 @@ export const ActiveTimerScreen: React.FC = () => {
       const remaining = getRemainingTime();
       setDisplayTime(remaining);
     }
-  }, [timer.status, timer.targetTimestamp, timer.mode, settings.hapticsEnabled, getRemainingTime]);
+  }, [timer.status, timer.targetTimestamp, timer.mode, timer.intervalConfig, settings.hapticsEnabled, getRemainingTime, nextRound]);
 
   const handleStart = useCallback(() => {
     if (settings.hapticsEnabled) {
@@ -114,11 +123,11 @@ export const ActiveTimerScreen: React.FC = () => {
     if (settings.keepScreenAwake && isRunning) {
       activateKeepAwakeAsync().catch(() => {});
     } else {
-      deactivateKeepAwakeAsync().catch(() => {});
+      deactivateKeepAwake().catch(() => {});
     }
 
     return () => {
-      deactivateKeepAwakeAsync().catch(() => {});
+      deactivateKeepAwake().catch(() => {});
     };
   }, [isRunning, settings.keepScreenAwake]);
 
@@ -138,13 +147,28 @@ export const ActiveTimerScreen: React.FC = () => {
     if (timer.status === 'idle' || timer.status === 'completed') {
       setDisplayTime(timer.durationMs);
       setIsRunning(false);
+    } else if (timer.status === 'running') {
+      // Reset display time when timer starts running
+      lastUpdateRef.current = Date.now();
+      setIsRunning(true);
     }
   }, [timer.status, timer.durationMs]);
+
+  // Handle interval phase changes for display
+  useEffect(() => {
+    if (timer.mode === 'interval' && timer.intervalConfig && timer.status === 'running') {
+      const currentPhaseDuration = timer.isWorkPhase 
+        ? timer.intervalConfig.workMs 
+        : timer.intervalConfig.restMs;
+      setDisplayTime(currentPhaseDuration);
+      lastUpdateRef.current = Date.now();
+    }
+  }, [timer.mode, timer.intervalConfig, timer.isWorkPhase, timer.status]);
 
   const timeString = formatTime(displayTime);
   const fontSize = timeString.length > 8 
     ? typography.fontSizes.xxxl 
-    : typography.fontSizes.display * (settings.largerText ? 1.2 : 1);
+    : typography.fontSizes.display * settings.fontScale;
 
   return (
     <>
@@ -176,7 +200,7 @@ export const ActiveTimerScreen: React.FC = () => {
             {timeString}
           </Text>
           
-          {timer.mode !== 'countdown' && (
+          {timer.mode !== 'countdown' && timer.mode !== 'interval' && (
             <Text
               style={[
                 styles.modeText,
@@ -185,7 +209,17 @@ export const ActiveTimerScreen: React.FC = () => {
             >
               {timer.mode === 'pomodoro' && 'Pomodoro'}
               {timer.mode === 'countup' && 'Counting Up'}
-              {timer.mode === 'interval' && (timer.isWorkPhase ? 'Work' : 'Rest')}
+            </Text>
+          )}
+          
+          {timer.mode === 'interval' && timer.intervalConfig && timer.status !== 'idle' && (
+            <Text
+              style={[
+                styles.modeText,
+                { color: timer.isWorkPhase ? accentColor : themeColors.secondaryText },
+              ]}
+            >
+              {timer.isWorkPhase ? 'WORK' : 'REST'}
             </Text>
           )}
           

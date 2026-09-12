@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useTheme, useSettingsStore } from '../theme';
+import { useTheme } from '../theme';
+import { useSettingsStore } from '../store';
 import { SettingsRow } from '../components/SettingsRow';
-import { spacing, typography, borderRadius } from '../theme/colors';
+import { spacing, typography, borderRadius, colors } from '../theme/colors';
+import { FONT_SCALES, getScaledSize } from '../utils/fontScale';
 
 type RootStackParamList = {
   Landing: undefined;
@@ -25,6 +27,85 @@ export const SettingsScreen: React.FC = () => {
     }
   };
 
+  // Cycle through theme options: dark -> light -> oled -> dark
+  const cycleTheme = () => {
+    const themes: ('dark' | 'light' | 'oled')[] = ['dark', 'light', 'oled'];
+    const currentIndex = themes.indexOf(settings.theme);
+    const nextIndex = (currentIndex + 1) % themes.length;
+    updateSettings({ theme: themes[nextIndex] });
+  };
+
+  // Cycle through accent colors
+  const cycleAccentColor = () => {
+    const accentColors = ['#00F5D4', '#00FFA3', '#0066FF', '#7B2CBF', '#FF6B35', '#00D26A'];
+    const currentIndex = accentColors.indexOf(settings.accentColor);
+    const nextIndex = (currentIndex + 1) % accentColors.length;
+    updateSettings({ accentColor: accentColors[nextIndex] });
+  };
+
+  // Cycle through font options
+  const cycleFont = () => {
+    const fonts: ('inter' | 'jetbrains-mono' | 'roboto-mono')[] = ['inter', 'jetbrains-mono', 'roboto-mono'];
+    const currentIndex = fonts.indexOf(settings.fontFamily);
+    const nextIndex = (currentIndex + 1) % fonts.length;
+    updateSettings({ fontFamily: fonts[nextIndex] });
+  };
+
+  const formatFontName = (font: string): string => {
+    return font.replace('-', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  // Duration presets in milliseconds
+  const FOCUS_PRESETS = [15, 20, 25, 30, 45, 60].map(m => m * 60 * 1000);
+  const BREAK_PRESETS = [3, 5, 10, 15, 20].map(m => m * 60 * 1000);
+  const COUNTDOWN_PRESETS = [5, 10, 15, 20, 30, 45, 60, 90, 120].map(m => m * 60 * 1000);
+
+  const cyclePomodoroFocus = () => {
+    const currentIndex = FOCUS_PRESETS.indexOf(settings.pomodoroFocusMs);
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % FOCUS_PRESETS.length;
+    updateSettings({ pomodoroFocusMs: FOCUS_PRESETS[nextIndex] });
+  };
+
+  const cyclePomodoroBreak = () => {
+    const currentIndex = BREAK_PRESETS.indexOf(settings.pomodoroBreakMs);
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % BREAK_PRESETS.length;
+    updateSettings({ pomodoroBreakMs: BREAK_PRESETS[nextIndex] });
+  };
+
+  const cycleCountdownDuration = () => {
+    const currentFirst = settings.countdownPresetsMs[0] ?? 5 * 60 * 1000;
+    const currentIndex = COUNTDOWN_PRESETS.indexOf(currentFirst);
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % COUNTDOWN_PRESETS.length;
+    // Update the first preset while keeping the rest of the array structure
+    const newPresets = [COUNTDOWN_PRESETS[nextIndex], ...settings.countdownPresetsMs.slice(1)];
+    updateSettings({ countdownPresetsMs: newPresets });
+  };
+
+  const formatDuration = (ms: number): string => {
+    const minutes = Math.round(ms / 60000);
+    if (minutes >= 60) {
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      return `${hours}h ${remainingMinutes > 0 ? `${remainingMinutes}m` : ''}`;
+    }
+    return `${minutes} min`;
+  };
+
+  // Font scale control handlers
+  const cycleFontScale = () => {
+    const currentIndex = FONT_SCALES.indexOf(settings.fontScale as any);
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % FONT_SCALES.length;
+    updateSettings({ fontScale: FONT_SCALES[nextIndex] });
+  };
+
+  const selectFontScale = (scale: number) => {
+    updateSettings({ fontScale: scale });
+  };
+
+  const formatFontScaleLabel = (scale: number): string => {
+    return `${Math.round(scale * 100)}%`;
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
@@ -34,7 +115,7 @@ export const SettingsScreen: React.FC = () => {
           accessibilityLabel="Go back"
           accessibilityRole="button"
         >
-          <Text style={[styles.backButton, { color: colors.accentColor }]}>
+          <Text style={[styles.backButton, { color: settings.accentColor }]}>
             ← Back
           </Text>
         </Pressable>
@@ -57,21 +138,21 @@ export const SettingsScreen: React.FC = () => {
             <SettingsRow
               label="Theme"
               value={settings.theme.charAt(0).toUpperCase() + settings.theme.slice(1)}
-              onPress={() => {}}
+              onPress={cycleTheme}
               accessibilityLabel="Change theme"
             />
             
             <SettingsRow
               label="Accent Color"
               value={settings.accentColor}
-              onPress={() => {}}
+              onPress={cycleAccentColor}
               accessibilityLabel="Change accent color"
             />
             
             <SettingsRow
               label="Font"
-              value={settings.fontFamily.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-              onPress={() => {}}
+              value={formatFontName(settings.fontFamily)}
+              onPress={cycleFont}
               accessibilityLabel="Change font"
             />
           </View>
@@ -86,16 +167,23 @@ export const SettingsScreen: React.FC = () => {
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <SettingsRow
               label="Pomodoro Focus"
-              value={`${Math.round(settings.pomodoroFocusMs / 60000)} min`}
-              onPress={() => {}}
+              value={formatDuration(settings.pomodoroFocusMs)}
+              onPress={cyclePomodoroFocus}
               accessibilityLabel="Change pomodoro focus duration"
             />
             
             <SettingsRow
               label="Pomodoro Break"
-              value={`${Math.round(settings.pomodoroBreakMs / 60000)} min`}
-              onPress={() => {}}
+              value={formatDuration(settings.pomodoroBreakMs)}
+              onPress={cyclePomodoroBreak}
               accessibilityLabel="Change pomodoro break duration"
+            />
+
+            <SettingsRow
+              label="Countdown Duration"
+              value={formatDuration(settings.countdownPresetsMs[0] ?? 5 * 60 * 1000)}
+              onPress={cycleCountdownDuration}
+              accessibilityLabel="Change countdown duration"
             />
             
             <SettingsRow
@@ -174,12 +262,58 @@ export const SettingsScreen: React.FC = () => {
               accessibilityLabel="Toggle reduced motion"
             />
             
-            <SettingsRow
-              label="Larger Text"
-              value={settings.largerText}
-              onPress={() => toggleSetting('largerText', settings.largerText)}
-              accessibilityLabel="Toggle larger text"
-            />
+            {/* Font Scale Control */}
+            <View style={styles.fontScaleSection}>
+              <Text style={[styles.fontScaleLabel, { color: colors.primaryText }]}>
+                Text Size
+              </Text>
+              
+              {/* Scale Selector */}
+              <View style={styles.fontScaleSelector}>
+                {FONT_SCALES.map((scale) => (
+                  <Pressable
+                    key={scale}
+                    style={[
+                      styles.fontScaleButton,
+                      settings.fontScale === scale && {
+                        backgroundColor: settings.accentColor,
+                      },
+                    ]}
+                    onPress={() => selectFontScale(scale)}
+                    accessibilityLabel={`Set text size to ${formatFontScaleLabel(scale)}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: settings.fontScale === scale }}
+                  >
+                    <Text
+                      style={[
+                        styles.fontScaleButtonText,
+                        {
+                          color: settings.fontScale === scale ? colors.background : colors.secondaryText,
+                          fontSize: getScaledSize(12, scale),
+                        },
+                      ]}
+                    >
+                      Aa
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              
+              {/* Live Preview */}
+              <View style={styles.fontScalePreview}>
+                <Text
+                  style={[
+                    styles.fontScalePreviewText,
+                    {
+                      color: colors.primaryText,
+                      fontSize: getScaledSize(16, settings.fontScale),
+                    },
+                  ]}
+                >
+                  Preview Text
+                </Text>
+              </View>
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -227,5 +361,41 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: borderRadius.lg,
     overflow: 'hidden',
+  },
+  fontScaleSection: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  fontScaleLabel: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    marginBottom: spacing.sm,
+  },
+  fontScaleSelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  fontScaleButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: '#1F1F1F',
+  },
+  fontScaleButtonText: {
+    fontWeight: typography.fontWeights.medium,
+  },
+  fontScalePreview: {
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#1F1F1F',
+  },
+  fontScalePreviewText: {
+    fontWeight: typography.fontWeights.regular,
+    lineHeight: 24,
   },
 });

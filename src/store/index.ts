@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { MMKV } from 'react-native-mmkv';
+import { createMMKV } from 'react-native-mmkv';
 import { AppSettings, DEFAULT_SETTINGS, TimerState, TimerStatus } from '../types';
+import { migrateLegacyFontSize } from '../utils/fontScale';
 
 // Initialize MMKV storage
-const storage = new MMKV();
+const storage = createMMKV();
 
 // Create MMKV adapter for Zustand persistence
 const mmkvStorage = {
@@ -16,7 +17,7 @@ const mmkvStorage = {
     return value ?? null;
   },
   removeItem: (key: string) => {
-    storage.delete(key);
+    storage.remove(key);
   },
 };
 
@@ -33,7 +34,31 @@ interface SettingsState {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      settings: DEFAULT_SETTINGS,
+      settings: (() => {
+        // Migration: convert legacy largerText boolean to fontScale number
+        const storedData = mmkvStorage.getItem('retimer-settings');
+        if (storedData) {
+          try {
+            const parsed = JSON.parse(storedData);
+            if (parsed.state?.settings) {
+              const legacyLargerText = parsed.state.settings.largerText;
+              if (legacyLargerText !== undefined) {
+                // Migrate the old boolean to new fontScale
+                const fontScale = migrateLegacyFontSize(legacyLargerText);
+                return {
+                  ...DEFAULT_SETTINGS,
+                  ...parsed.state.settings,
+                  largerText: undefined, // Remove old property
+                  fontScale, // Set new property
+                };
+              }
+            }
+          } catch (e) {
+            // If parsing fails, use defaults
+          }
+        }
+        return DEFAULT_SETTINGS;
+      })(),
       updateSettings: (updates) =>
         set((state) => ({
           settings: { ...state.settings, ...updates },
@@ -202,33 +227,47 @@ export const useTimerStore = create<TimerStoreState>()(
         const { timer } = get();
         if (!timer.intervalConfig) return;
 
-        const nextRound = timer.currentRound + 1;
-        const isWorkPhase = !timer.isWorkPhase;
-        const durationMs = isWorkPhase 
-          ? timer.intervalConfig.workMs 
-          : timer.intervalConfig.restMs;
-
-        if (nextRound >= timer.totalRounds) {
-          // All rounds completed
+        const nextIsWorkPhase = !timer.isWorkPhase;
+        let nextRound = timer.currentRound;
+        
+        // If we just finished a rest phase, increment the round counter
+        if (!timer.isWorkPhase) {
+          nextRound = timer.currentRound + 1;
+        }
+        
+        // Check if all rounds are completed
+        if (nextRound >= timer.totalRounds && !nextIsWorkPhase) {
+          // All rounds completed - we finished the last rest phase
           set({
             timer: {
               ...timer,
               status: 'completed',
               targetTimestamp: null,
+              currentRound: nextRound,
+              isWorkPhase: false,
             },
           });
           return;
         }
+        
+        // Determine duration for next phase
+        const durationMs = nextIsWorkPhase 
+          ? timer.intervalConfig.workMs 
+          : timer.intervalConfig.restMs;
+
+        const now = Date.now();
+        const targetTimestamp = now + durationMs;
 
         set({
           timer: {
             ...timer,
             currentRound: nextRound,
-            isWorkPhase,
+            isWorkPhase: nextIsWorkPhase,
             durationMs,
             elapsedTimeMs: 0,
-            status: 'idle',
-            targetTimestamp: null,
+            status: 'running',
+            targetTimestamp,
+            pausedAt: null,
           },
         });
       },

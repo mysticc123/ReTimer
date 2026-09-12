@@ -93,7 +93,7 @@ export interface AppSettings {
 
   // Accessibility
   reducedMotion: boolean;
-  largerText: boolean;
+  fontScale: number;
 }
 
 /**
@@ -126,7 +126,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   keepScreenAwake: true,
   fullscreenMode: true,
   reducedMotion: false,
-  largerText: false,
+  fontScale: 1.0,
 };
 
 /**
