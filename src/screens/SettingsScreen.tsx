@@ -54,6 +54,42 @@ export const SettingsScreen: React.FC = () => {
     return font.replace('-', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
+  // Duration presets in milliseconds
+  const FOCUS_PRESETS = [15, 20, 25, 30, 45, 60].map(m => m * 60 * 1000);
+  const BREAK_PRESETS = [3, 5, 10, 15, 20].map(m => m * 60 * 1000);
+  const COUNTDOWN_PRESETS = [5, 10, 15, 20, 30, 45, 60, 90, 120].map(m => m * 60 * 1000);
+
+  const cyclePomodoroFocus = () => {
+    const currentIndex = FOCUS_PRESETS.indexOf(settings.pomodoroFocusMs);
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % FOCUS_PRESETS.length;
+    updateSettings({ pomodoroFocusMs: FOCUS_PRESETS[nextIndex] });
+  };
+
+  const cyclePomodoroBreak = () => {
+    const currentIndex = BREAK_PRESETS.indexOf(settings.pomodoroBreakMs);
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % BREAK_PRESETS.length;
+    updateSettings({ pomodoroBreakMs: BREAK_PRESETS[nextIndex] });
+  };
+
+  const cycleCountdownDuration = () => {
+    const currentFirst = settings.countdownPresetsMs[0] ?? 5 * 60 * 1000;
+    const currentIndex = COUNTDOWN_PRESETS.indexOf(currentFirst);
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % COUNTDOWN_PRESETS.length;
+    // Update the first preset while keeping the rest of the array structure
+    const newPresets = [COUNTDOWN_PRESETS[nextIndex], ...settings.countdownPresetsMs.slice(1)];
+    updateSettings({ countdownPresetsMs: newPresets });
+  };
+
+  const formatDuration = (ms: number): string => {
+    const minutes = Math.round(ms / 60000);
+    if (minutes >= 60) {
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      return `${hours}h ${remainingMinutes > 0 ? `${remainingMinutes}m` : ''}`;
+    }
+    return `${minutes} min`;
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
@@ -115,16 +151,23 @@ export const SettingsScreen: React.FC = () => {
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <SettingsRow
               label="Pomodoro Focus"
-              value={`${Math.round(settings.pomodoroFocusMs / 60000)} min`}
-              onPress={() => {}}
+              value={formatDuration(settings.pomodoroFocusMs)}
+              onPress={cyclePomodoroFocus}
               accessibilityLabel="Change pomodoro focus duration"
             />
             
             <SettingsRow
               label="Pomodoro Break"
-              value={`${Math.round(settings.pomodoroBreakMs / 60000)} min`}
-              onPress={() => {}}
+              value={formatDuration(settings.pomodoroBreakMs)}
+              onPress={cyclePomodoroBreak}
               accessibilityLabel="Change pomodoro break duration"
+            />
+
+            <SettingsRow
+              label="Countdown Duration"
+              value={formatDuration(settings.countdownPresetsMs[0] ?? 5 * 60 * 1000)}
+              onPress={cycleCountdownDuration}
+              accessibilityLabel="Change countdown duration"
             />
             
             <SettingsRow

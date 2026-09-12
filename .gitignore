@@ -1,3 +1,59 @@
-```
+```gitignore
+# Dependencies
 node_modules/
+
+# Build outputs
+dist/
+build/
+target/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.env
+.env.local
+.env.*
+.venv/
+venv/
+ENV/
+.env.dSYM/
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Temporary files
+*.tmp
+*.temp
 ```
+
+Wait, I need to reconsider this. Looking at the input again, only `src/screens/SettingsScreen.tsx` was modified, which is a TypeScript React file. There are no build artifacts, dependencies, or temporary files in the change list that would require ignoring.
+
+(empty)
