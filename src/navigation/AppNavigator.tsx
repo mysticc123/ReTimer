@@ -4,11 +4,13 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LandingScreen } from '../screens/LandingScreen';
 import { ActiveTimerScreen } from '../screens/ActiveTimerScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { HistoryScreen } from '../screens/HistoryScreen';
 
 type RootStackParamList = {
   Landing: undefined;
   ActiveTimer: undefined;
   Settings: undefined;
+  History: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -25,6 +27,7 @@ export const AppNavigator: React.FC = () => {
         <Stack.Screen name="Landing" component={LandingScreen} />
         <Stack.Screen name="ActiveTimer" component={ActiveTimerScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="History" component={HistoryScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

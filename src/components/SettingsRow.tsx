@@ -1,6 +1,7 @@
 import React from 'react';
-import { Pressable, View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../theme';
+import { PressableScale } from './PressableScale';
 import { spacing, typography } from '../theme/colors';
 
 interface SettingsRowProps {
@@ -16,37 +17,59 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
   onPress,
   accessibilityLabel,
 }) => {
-  const { colors } = useTheme();
+  const { colors, typeface } = useTheme();
 
-  const Container = onPress ? Pressable : View;
-
-  return (
-    <Container
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.container,
-        { borderBottomColor: colors.border },
-        onPress && pressed && styles.pressed,
-      ]}
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole={onPress ? 'button' : undefined}
-    >
-      <Text style={[styles.label, { color: colors.primaryText }]}>
+  const content = (
+    <>
+      <Text style={[styles.label, { color: colors.primaryText, fontFamily: typeface }]}>
         {label}
       </Text>
-      
+
       {value !== undefined && (
-        <Text style={[styles.value, { color: colors.secondaryText }]}>
+        <Text style={[styles.value, { color: colors.secondaryText, fontFamily: typeface }]}>
           {typeof value === 'boolean' ? (value ? 'On' : 'Off') : String(value)}
         </Text>
       )}
-      
+
       {onPress && (
-        <Text style={[styles.chevron, { color: colors.secondaryText }]}>
+        <Text
+          style={[
+            styles.chevron,
+            { color: colors.secondaryText, fontFamily: typeface },
+          ]}
+        >
           ›
         </Text>
       )}
-    </Container>
+    </>
+  );
+
+  if (!onPress) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { borderBottomColor: colors.border },
+        ]}
+        accessibilityLabel={accessibilityLabel}
+      >
+        {content}
+      </View>
+    );
+  }
+
+  return (
+    <PressableScale
+      onPress={onPress}
+      style={[
+        styles.container,
+        { borderBottomColor: colors.border },
+      ]}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
+    >
+      {content}
+    </PressableScale>
   );
 };
 
@@ -56,10 +79,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     borderBottomWidth: 1,
-  },
-  pressed: {
-    backgroundColor: 'rgba(128, 128, 128, 0.1)',
   },
   label: {
     fontSize: typography.fontSizes.md,

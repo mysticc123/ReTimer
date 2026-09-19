@@ -16,7 +16,13 @@ export type ThemeMode = 'dark' | 'light' | 'oled';
 /**
  * Font family options
  */
-export type FontFamily = 'inter' | 'jetbrains-mono' | 'roboto-mono';
+export type FontFamily =
+  | 'inter'
+  | 'jetbrains-mono'
+  | 'roboto-mono'
+  | 'space-mono'
+  | 'oswald'
+  | 'roboto';
 
 /**
  * Interval timer configuration
@@ -25,6 +31,43 @@ export interface IntervalConfig {
   workMs: number;
   restMs: number;
   rounds: number;
+}
+
+/**
+ * Pomodoro timer configuration (Focus/Break cycle).
+ * Captured at initialization so a running cycle is stable even if settings
+ * change later. The active phase is tracked via `isWorkPhase`
+ * (focus = work, break = rest) to reuse the existing phase structure.
+ */
+export interface PomodoroConfig {
+  focusMs: number;
+  breakMs: number;
+}
+
+/**
+ * Focus-equivalent phase recorded in session history.
+ * Breaks and rests complete silently (transitions only) and never record.
+ */
+export type FocusSessionPhase = 'focus' | 'work' | 'single';
+
+/**
+ * A completed focus session. Pure data (numbers/strings only) so it is
+ * safe for JSON persistence. `actualDurationMs` equals `plannedDurationMs`
+ * for every record: a phase that reaches zero delivered its full focus,
+ * and pauses only shift wall-clock time (see phaseStartedAtMs tracking).
+ */
+export interface FocusSession {
+  id: string;
+  mode: 'pomodoro' | 'countdown' | 'interval';
+  phase: FocusSessionPhase;
+  /** 0-indexed interval round of a completed work phase. */
+  round?: number;
+  /** Total interval rounds of the run. */
+  totalRounds?: number;
+  plannedDurationMs: number;
+  actualDurationMs: number;
+  startedAtMs: number;
+  completedAtMs: number;
 }
 
 /**
@@ -44,6 +87,7 @@ export interface TimerState {
   mode: TimerMode;
   durationMs: number;
   intervalConfig?: IntervalConfig;
+  pomodoroConfig?: PomodoroConfig;
 
   // Runtime state
   status: TimerStatus;

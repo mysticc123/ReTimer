@@ -1,6 +1,7 @@
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import React from 'react';
-import { useTheme } from '../theme';
+import { useTheme, resolveTypeface } from '../theme';
+import { PressableScale } from './PressableScale';
 import { spacing, borderRadius, typography } from '../theme/colors';
 
 interface TimerCardProps {
@@ -24,21 +25,20 @@ export const TimerCard: React.FC<TimerCardProps> = ({
   onPress,
   accessibilityLabel,
 }) => {
-  const { colors, accentColor, isDark } = useTheme();
+  const { colors, accentColor, isDark, fontFamily } = useTheme();
 
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       accessibilityLabel={accessibilityLabel || `${mode} timer`}
       accessibilityRole="button"
       accessibilityState={{ selected: isSelected }}
-      style={({ pressed }) => [
+      style={[
         styles.container,
         {
           backgroundColor: isSelected ? accentColor : colors.surface,
           borderColor: colors.border,
         },
-        pressed && styles.pressed,
       ]}
     >
       <View style={styles.content}>
@@ -50,18 +50,20 @@ export const TimerCard: React.FC<TimerCardProps> = ({
               styles.title,
               {
                 color: isSelected ? '#000000' : colors.primaryText,
+                fontFamily: resolveTypeface(fontFamily, '600'),
               },
             ]}
           >
             {title}
           </Text>
-          
+
           {(subtitle || duration) && (
             <Text
               style={[
                 styles.subtitle,
                 {
                   color: isSelected ? '#000000' : colors.secondaryText,
+                  fontFamily: resolveTypeface(fontFamily, '400'),
                 },
               ]}
             >
@@ -72,7 +74,7 @@ export const TimerCard: React.FC<TimerCardProps> = ({
           )}
         </View>
       </View>
-    </Pressable>
+    </PressableScale>
   );
 };
 
@@ -82,9 +84,6 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     marginVertical: spacing.sm,
-  },
-  pressed: {
-    opacity: 0.9,
   },
   content: {
     flexDirection: 'row',

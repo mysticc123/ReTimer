@@ -1,6 +1,8 @@
 /**
  * Color palette for the application
  */
+import type { FontFamily, ThemeMode } from '../types';
+
 export const colors = {
   // Core colors
   black: '#000000',
@@ -44,6 +46,8 @@ export const colors = {
     purple: '#7B2CBF',
     orange: '#FF6B35',
     green: '#00D26A',
+    pink: '#FF4D8D',
+    amber: '#FFB800',
   },
   
   // Status colors
@@ -54,6 +58,61 @@ export const colors = {
     info: '#0066FF',
   },
 };
+
+/**
+ * Selectable accent colors. Values mirror `colors.accent`; labels reuse the
+ * existing token names. Single source for the picker and row display.
+ */
+export interface AccentOption {
+  id: string;
+  name: string;
+  value: string;
+}
+
+export const accentOptions: AccentOption[] = [
+  { id: 'cyan', name: 'Cyan', value: colors.accent.cyan },
+  { id: 'mint', name: 'Mint', value: colors.accent.mint },
+  { id: 'blue', name: 'Blue', value: colors.accent.blue },
+  { id: 'purple', name: 'Purple', value: colors.accent.purple },
+  { id: 'orange', name: 'Orange', value: colors.accent.orange },
+  { id: 'green', name: 'Green', value: colors.accent.green },
+  { id: 'pink', name: 'Pink', value: colors.accent.pink },
+  { id: 'amber', name: 'Amber', value: colors.accent.amber },
+];
+
+/**
+ * Selectable font styles. IDs match the persisted `FontFamily` values;
+ * previews render with the actually-registered typefaces (see theme resolver).
+ */
+export interface FontOption {
+  id: FontFamily;
+  name: string;
+}
+
+export const fontOptions: FontOption[] = [
+  { id: 'inter', name: 'Inter' },
+  { id: 'jetbrains-mono', name: 'JetBrains Mono' },
+  { id: 'roboto-mono', name: 'Roboto Mono' },
+  { id: 'space-mono', name: 'Space Mono' },
+  { id: 'oswald', name: 'Oswald' },
+  { id: 'roboto', name: 'Roboto' },
+];
+
+/**
+ * Selectable themes. IDs match the persisted `ThemeMode` values; names
+ * follow the existing capitalized row-display convention.
+ * Single source for the picker and row display.
+ */
+export interface ThemeOption {
+  id: ThemeMode;
+  name: string;
+}
+
+export const themeOptions: ThemeOption[] = [
+  { id: 'dark', name: 'Dark' },
+  { id: 'light', name: 'Light' },
+  { id: 'oled', name: 'Oled' },
+];
 
 /**
  * Get theme colors based on theme mode
