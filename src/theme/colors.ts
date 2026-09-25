@@ -35,7 +35,10 @@ export const colors = {
     surfaceElevated: '#050505',
     primaryText: '#FFFFFF',
     secondaryText: '#8A8A8A',
-    border: '#141414',
+    // Same value as the dark theme border: just enough separation for
+    // surface cards/rows to read against pure black without becoming
+    // a bright outline.
+    border: '#1F1F1F',
   },
   
   // Accent colors (configurable)
@@ -111,7 +114,7 @@ export interface ThemeOption {
 export const themeOptions: ThemeOption[] = [
   { id: 'dark', name: 'Dark' },
   { id: 'light', name: 'Light' },
-  { id: 'oled', name: 'Oled' },
+  { id: 'oled', name: 'OLED' },
 ];
 
 /**
@@ -127,6 +130,41 @@ export const getThemeColors = (theme: 'dark' | 'light' | 'oled') => {
       return colors.dark;
   }
 };
+
+/**
+ * Relative luminance of a hex color (WCAG definition), 0 (black) to 1 (white).
+ * Accepts "#RRGGBB" or "#RGB" (case-insensitive, "#" optional).
+ */
+function relativeLuminance(hex: string): number {
+  const clean = hex.replace('#', '');
+  const full =
+    clean.length === 3
+      ? clean
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : clean;
+  const channel = (index: number): number => {
+    const srgb = parseInt(full.substring(index, index + 2), 16) / 255;
+    return srgb <= 0.03928
+      ? srgb / 12.92
+      : Math.pow((srgb + 0.055) / 1.055, 2.4);
+  };
+  return (
+    0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4)
+  );
+}
+
+/**
+ * Text color for content placed directly on a user-selected accent
+ * background: black on luminous accents, white on dark ones. The 0.179
+ * threshold is the WCAG crossover where white begins to out-contrast black.
+ * Single implementation shared by every accent-backed control so all
+ * supported accents stay readable in every theme.
+ */
+export function getContrastText(accentHex: string): '#000000' | '#FFFFFF' {
+  return relativeLuminance(accentHex) > 0.179 ? '#000000' : '#FFFFFF';
+}
 
 /**
  * Spacing scale

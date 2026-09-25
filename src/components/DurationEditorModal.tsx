@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme, resolveTypeface } from '../theme';
-import { useSettingsStore } from '../store';
 import { WheelNumberPicker } from './WheelNumberPicker';
 import { EditorModalShell } from './EditorModalShell';
 import { spacing, typography } from '../theme/colors';
@@ -93,7 +92,6 @@ export const DurationEditorModal: React.FC<DurationEditorModalProps> = ({
   onCancel,
 }) => {
   const { colors, fontFamily } = useTheme();
-  const fontScale = useSettingsStore((state) => state.settings.fontScale);
 
   const [minutes, setMinutes] = useState(25);
   const [seconds, setSeconds] = useState(0);
@@ -128,7 +126,7 @@ export const DurationEditorModal: React.FC<DurationEditorModalProps> = ({
               styles.wheelLabel,
               {
                 color: colors.secondaryText,
-                fontSize: typography.fontSizes.sm * fontScale,
+                fontSize: typography.fontSizes.sm,
                 fontFamily: resolveTypeface(fontFamily, '500'),
               },
             ]}
@@ -150,7 +148,7 @@ export const DurationEditorModal: React.FC<DurationEditorModalProps> = ({
               styles.colon,
               {
                 color: colors.secondaryText,
-                fontSize: typography.fontSizes.xxl * fontScale,
+                fontSize: typography.fontSizes.xxl,
                 fontFamily: resolveTypeface(fontFamily, '400'),
               },
             ]}
@@ -164,7 +162,7 @@ export const DurationEditorModal: React.FC<DurationEditorModalProps> = ({
               styles.wheelLabel,
               {
                 color: colors.secondaryText,
-                fontSize: typography.fontSizes.sm * fontScale,
+                fontSize: typography.fontSizes.sm,
                 fontFamily: resolveTypeface(fontFamily, '500'),
               },
             ]}

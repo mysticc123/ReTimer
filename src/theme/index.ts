@@ -82,37 +82,3 @@ export const resolveTypeface = (
       }
   }
 };
-
-/**
- * Get font family based on settings
- */
-export const getFontFamily = (fontFamily: FontFamily): string => {
-  return resolveTypeface(fontFamily, '400');
-};
-
-/**
- * Get font family for monospace/timer display
- */
-export const getTimerFontFamily = (fontFamily: FontFamily): string => {
-  // For timer digits, always prefer monospace fonts for stability
-  switch (fontFamily) {
-    case 'inter':
-      return 'Inter-Regular'; // Inter has tabular figures
-    case 'jetbrains-mono':
-      return 'JetBrainsMono-Regular';
-    case 'roboto-mono':
-      return 'RobotoMono-Regular';
-    default:
-      return 'Inter-Regular';
-  }
-};
-
-/**
- * Theme provider hook for components needing theme values
- */
-export const useThemedStyles = <T extends Record<string, any>>(
-  stylesFactory: (theme: ReturnType<typeof useTheme>) => T
-) => {
-  const theme = useTheme();
-  return stylesFactory(theme);
-};

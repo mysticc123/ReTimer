@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { createMMKV } from 'react-native-mmkv';
-import { AppSettings, DEFAULT_SETTINGS, FocusSession, PomodoroConfig, TimerState, TimerStatus } from '../types';
+import { AppSettings, DEFAULT_SETTINGS, FocusSession, PomodoroConfig, TimerState } from '../types';
 import { migrateLegacyFontSize } from '../utils/fontScale';
+import { normalizeLabel } from '../types';
+import { playCompletionSound, withoutCompletionSound } from '../services/completionSound';
 
 // Initialize MMKV storage
 const storage = createMMKV();
@@ -22,17 +24,13 @@ const mmkvStorage = {
 };
 
 /**
- * Phase 1A: focus-session history foundation.
- *
- * `phaseStartedAtMs` is the wall-clock moment the CURRENT phase began
- * running. It is module-scoped (never in TimerState, never persisted) so it
- * cannot go stale: pause/resume leave it untouched, and an app reload wipes
- * it exactly when the persisted timer is forced back to idle.
- * - set on fresh starts (idle -> running) and on every phase transition,
- * - cleared on initialize/reset/clear and on terminal completion,
- * - never touched by pause/resume.
+ * Phase 1A: focus-session history foundation. Issue #11: the phase clock
+ * lives in persisted TimerState (not module scope) so a running or paused
+ * phase survives process death together with its session: it is written in
+ * the same set() as the status/target it describes, so the two can never
+ * tear. Pause/resume leave it untouched; initialize/reset/clear and
+ * terminal completions null it.
  */
-let phaseStartedAtMs: number | null = null;
 
 /** Monotonic counter disambiguating record IDs within the same millisecond. */
 let sessionCounter = 0;
@@ -101,6 +99,31 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'retimer-settings',
       storage: createJSONStorage(() => mmkvStorage),
+      // Rehydrated settings must never be missing keys: a persisted snapshot
+      // written by an older schema (before long breaks, session counts,
+      // daily goal, fontScale, or completion behavior existed) shallow-
+      // replaces the whole `settings` object, leaving those newer keys
+      // undefined -> the UI showed "0s" / "undefined". Merging against
+      // DEFAULT_SETTINGS fills every absent key while keeping every
+      // persisted value. This is the single source of truth for validity:
+      // the screen no longer needs per-row `?? ''` fallbacks.
+      merge: (persistedState, currentState) => {
+        if (!persistedState || typeof persistedState !== 'object') {
+          return currentState;
+        }
+        const persisted = persistedState as {
+          settings?: Record<string, unknown>;
+        };
+        const rawSettings = persisted.settings;
+        if (rawSettings && typeof rawSettings === 'object') {
+          return {
+            ...currentState,
+            ...persisted,
+            settings: { ...DEFAULT_SETTINGS, ...rawSettings } as AppSettings,
+          };
+        }
+        return currentState;
+      },
     }
   )
 );
@@ -113,7 +136,7 @@ interface TimerStoreState {
   timer: TimerState;
   
   // Timer lifecycle actions
-  initializeTimer: (mode: TimerState['mode'], durationMs: number, intervalConfig?: any, pomodoroConfig?: PomodoroConfig) => void;
+  initializeTimer: (mode: TimerState['mode'], durationMs: number, intervalConfig?: any, pomodoroConfig?: PomodoroConfig, label?: string) => void;
   startTimer: () => void;
   pauseTimer: () => void;
   resumeTimer: () => void;
@@ -149,6 +172,9 @@ const createInitialTimerState = (): TimerState => ({
   currentRound: 0,
   totalRounds: 1,
   isWorkPhase: true,
+  pomodoroFocusCount: 0,
+  phaseStartedAtMs: null,
+  label: undefined,
 });
 
 export const useTimerStore = create<TimerStoreState>()(
@@ -157,11 +183,9 @@ export const useTimerStore = create<TimerStoreState>()(
       timer: createInitialTimerState(),
       sessions: [],
 
-      initializeTimer: (mode, durationMs, intervalConfig, pomodoroConfig) => {
+      initializeTimer: (mode, durationMs, intervalConfig, pomodoroConfig, label) => {
         const totalRounds = intervalConfig?.rounds ?? 1;
         // A freshly initialized timer has no active phase yet.
-        phaseStartedAtMs = null;
-
         set({
           timer: {
             mode,
@@ -175,6 +199,9 @@ export const useTimerStore = create<TimerStoreState>()(
             currentRound: 0,
             totalRounds,
             isWorkPhase: true,
+            pomodoroFocusCount: 0,
+            phaseStartedAtMs: null,
+            label: normalizeLabel(label),
           },
         });
       },
@@ -190,18 +217,16 @@ export const useTimerStore = create<TimerStoreState>()(
             ? now - timer.elapsedTimeMs
             : now + (timer.durationMs - timer.elapsedTimeMs);
 
-        if (timer.status === 'idle') {
-          // Fresh phase start (not a resume): anchor the phase clock used
-          // by focus-session history. Resumes must not move it.
-          phaseStartedAtMs = now;
-        }
-
+        // Fresh phase start (not a resume): anchor the phase clock used
+        // by focus-session history. Resumes must not move it.
         set({
           timer: {
             ...timer,
             status: 'running',
             targetTimestamp,
             pausedAt: null,
+            phaseStartedAtMs:
+              timer.status === 'idle' ? now : timer.phaseStartedAtMs,
           },
         });
       },
@@ -237,9 +262,8 @@ export const useTimerStore = create<TimerStoreState>()(
         // A paused phase with no phase clock is a staged (manual-transition)
         // phase that has never started: beginning it anchors the clock now.
         // Ordinary mid-phase resumes keep the existing clock untouched.
-        if (phaseStartedAtMs === null) {
-          phaseStartedAtMs = now;
-        }
+        const phaseStartedAtMs =
+          timer.phaseStartedAtMs === null ? now : timer.phaseStartedAtMs;
         const targetTimestamp =
           timer.mode === 'countup'
             ? now - timer.elapsedTimeMs
@@ -251,6 +275,7 @@ export const useTimerStore = create<TimerStoreState>()(
             status: 'running',
             targetTimestamp,
             pausedAt: null,
+            phaseStartedAtMs,
           },
         });
       },
@@ -258,10 +283,11 @@ export const useTimerStore = create<TimerStoreState>()(
       resetTimer: () => {
         const { timer } = get();
         // A reset Pomodoro always restarts at Focus with the full Focus duration,
-        // even if reset happened mid-Break. Other modes keep existing behavior.
+        // even if reset happened mid-Break. An Interval always restarts at Work
+        // with the full Work duration. Other modes keep existing behavior.
         const pomodoroConfig = timer.mode === 'pomodoro' ? timer.pomodoroConfig : undefined;
+        const intervalConfig = timer.mode === 'interval' ? timer.intervalConfig : undefined;
         // The abandoned partial phase is not recorded; no phase is active now.
-        phaseStartedAtMs = null;
         set({
           timer: {
             ...timer,
@@ -271,7 +297,14 @@ export const useTimerStore = create<TimerStoreState>()(
             elapsedTimeMs: 0,
             currentRound: 0,
             isWorkPhase: true,
-            durationMs: pomodoroConfig ? pomodoroConfig.focusMs : timer.durationMs,
+            pomodoroFocusCount: 0,
+            durationMs: pomodoroConfig
+              ? pomodoroConfig.focusMs
+              : intervalConfig
+              ? intervalConfig.workMs
+              : timer.durationMs,
+            phaseStartedAtMs: null,
+            label: undefined,
           },
         });
       },
@@ -290,15 +323,16 @@ export const useTimerStore = create<TimerStoreState>()(
         // pomodoro timers, recorded as focus). Count-up has no completion
         // semantics and never records.
         if (timer.mode === 'countdown' || timer.mode === 'pomodoro') {
-          if (isValidStartedAt(phaseStartedAtMs)) {
+          if (isValidStartedAt(timer.phaseStartedAtMs)) {
             const record: FocusSession = {
               id: `${completedAtMs}-${++sessionCounter}`,
               mode: timer.mode === 'pomodoro' ? 'pomodoro' : 'countdown',
               phase: timer.mode === 'pomodoro' ? 'focus' : 'single',
               plannedDurationMs: timer.durationMs,
               actualDurationMs: timer.durationMs,
-              startedAtMs: phaseStartedAtMs,
+              startedAtMs: timer.phaseStartedAtMs,
               completedAtMs,
+              label: timer.label,
             };
             sessions = [...sessions, record].slice(-MAX_SESSIONS);
           } else {
@@ -307,17 +341,54 @@ export const useTimerStore = create<TimerStoreState>()(
             );
           }
         }
-        phaseStartedAtMs = null;
 
-        set({
-          timer: {
-            ...timer,
-            status: 'completed',
-            targetTimestamp: null,
-            elapsedTimeMs: timer.durationMs,
-          },
-          sessions,
-        });
+        // P9: Countdown repeat. When the persisted completion behavior is
+        // 'repeat', a finished Countdown cycle restarts immediately as a
+        // fresh running phase (same duration, same label) instead of
+        // stopping. The finished cycle is already recorded exactly once
+        // above; the new cycle gets a new target and a new phase clock, so
+        // exactly-once and history-cap rules keep holding per cycle.
+        // Countdown-only: every other mode, and every other behavior value
+        // (including legacy 'continue'), keeps the existing stop semantics.
+        // A non-positive duration can never repeat (its new target would
+        // already be past); it stops instead.
+        const repeatCountdown =
+          timer.mode === 'countdown' &&
+          timer.durationMs > 0 &&
+          useSettingsStore.getState().settings.timerCompletionBehavior ===
+            'repeat';
+
+        if (repeatCountdown) {
+          set({
+            timer: {
+              ...timer,
+              status: 'running',
+              targetTimestamp: completedAtMs + timer.durationMs,
+              pausedAt: null,
+              elapsedTimeMs: 0,
+              phaseStartedAtMs: completedAtMs,
+            },
+            sessions,
+          });
+        } else {
+          set({
+            timer: {
+              ...timer,
+              status: 'completed',
+              targetTimestamp: null,
+              elapsedTimeMs: timer.durationMs,
+              phaseStartedAtMs: null,
+            },
+            sessions,
+          });
+        }
+
+        // P10: the completion sound is decided and dispatched from the
+        // canonical completion transition (exactly-once by construction),
+        // not from any screen. Count-up never reaches here, so it never
+        // sounds. The pre-transition `timer` describes the phase that just
+        // finished, which is exactly what the sound decision reads.
+        playCompletionSound(timer, useSettingsStore.getState().settings);
 
         // Trigger completion callback if exists
         if (timer.onComplete) {
@@ -340,7 +411,6 @@ export const useTimerStore = create<TimerStoreState>()(
         if (!timer.isWorkPhase) {
           // Just finished a rest phase: transition only, never a focus record.
           if (timer.currentRound + 1 >= timer.totalRounds) {
-            phaseStartedAtMs = null;
             set({
               timer: {
                 ...timer,
@@ -349,12 +419,14 @@ export const useTimerStore = create<TimerStoreState>()(
                 pausedAt: null,
                 elapsedTimeMs: timer.intervalConfig.restMs,
                 isWorkPhase: false,
+                phaseStartedAtMs: null,
               },
               sessions,
             });
+            playCompletionSound(timer, useSettingsStore.getState().settings);
             return;
           }
-        } else if (isValidStartedAt(phaseStartedAtMs)) {
+        } else if (isValidStartedAt(timer.phaseStartedAtMs)) {
           // Just finished a work phase: record the focus session.
           const record: FocusSession = {
             id: `${now}-${++sessionCounter}`,
@@ -364,8 +436,9 @@ export const useTimerStore = create<TimerStoreState>()(
             totalRounds: timer.totalRounds,
             plannedDurationMs: timer.durationMs,
             actualDurationMs: timer.durationMs,
-            startedAtMs: phaseStartedAtMs,
+            startedAtMs: timer.phaseStartedAtMs,
             completedAtMs: now,
+            label: timer.label,
           };
           sessions = [...sessions, record].slice(-MAX_SESSIONS);
         } else {
@@ -385,7 +458,6 @@ export const useTimerStore = create<TimerStoreState>()(
         if (!autoStart) {
           // Manual mode: stage the next phase stopped with a full duration
           // and no target. Start (resume) begins it and anchors the clock.
-          phaseStartedAtMs = null;
           set({
             timer: {
               ...timer,
@@ -396,6 +468,7 @@ export const useTimerStore = create<TimerStoreState>()(
               status: 'paused',
               targetTimestamp: null,
               pausedAt: now,
+              phaseStartedAtMs: null,
             },
             sessions,
           });
@@ -403,7 +476,6 @@ export const useTimerStore = create<TimerStoreState>()(
         }
 
         const targetTimestamp = now + durationMs;
-        phaseStartedAtMs = now;
 
         set({
           timer: {
@@ -415,9 +487,11 @@ export const useTimerStore = create<TimerStoreState>()(
             status: 'running',
             targetTimestamp,
             pausedAt: null,
+            phaseStartedAtMs: now,
           },
           sessions,
         });
+        playCompletionSound(timer, useSettingsStore.getState().settings);
       },
 
       nextPomodoroPhase: () => {
@@ -430,15 +504,16 @@ export const useTimerStore = create<TimerStoreState>()(
         // Focus-only history: a finishing focus phase records; a finishing
         // break phase transitions silently.
         if (timer.isWorkPhase) {
-          if (isValidStartedAt(phaseStartedAtMs)) {
+          if (isValidStartedAt(timer.phaseStartedAtMs)) {
             const record: FocusSession = {
               id: `${now}-${++sessionCounter}`,
               mode: 'pomodoro',
               phase: 'focus',
               plannedDurationMs: timer.durationMs,
               actualDurationMs: timer.durationMs,
-              startedAtMs: phaseStartedAtMs,
+              startedAtMs: timer.phaseStartedAtMs,
               completedAtMs: now,
+              label: timer.label,
             };
             sessions = [...sessions, record].slice(-MAX_SESSIONS);
           } else {
@@ -446,32 +521,57 @@ export const useTimerStore = create<TimerStoreState>()(
               'Skipping focus-session record for pomodoro focus: missing phase start timestamp. Transition preserved.'
             );
           }
+          // Increment focus count when a focus phase completes
+          const nextFocusCount = timer.pomodoroFocusCount + 1;
+          const sessionsBeforeLongBreak = timer.pomodoroConfig.sessionsBeforeLongBreak ?? 4;
+          const isLongBreak = nextFocusCount >= sessionsBeforeLongBreak;
+
+          // Pure alternation: Focus -> Break -> Focus ... 
+          // Manual phases: the next phase is staged stopped (paused with a
+          // full duration and no target). The user presses Start to begin it,
+          // which anchors the phase clock via resumeTimer. No auto-start.
+          const nextIsWorkPhase = false; // Next phase is always a break after focus
+          const durationMs = isLongBreak
+            ? timer.pomodoroConfig.longBreakMs
+            : timer.pomodoroConfig.breakMs;
+
+          set({
+            timer: {
+              ...timer,
+              isWorkPhase: nextIsWorkPhase,
+              durationMs,
+              elapsedTimeMs: 0,
+              status: 'paused',
+              targetTimestamp: null,
+              pausedAt: now,
+              phaseStartedAtMs: null,
+              pomodoroFocusCount: isLongBreak ? 0 : nextFocusCount,
+            },
+            sessions,
+          });
+        } else {
+          // Break phase completed (short or long break) - transition to focus
+          // Reset focus count to 0 after long break, keep current count after short break
+          const sessionsBeforeLongBreak = timer.pomodoroConfig.sessionsBeforeLongBreak ?? 4;
+          const wasLongBreak = timer.pomodoroFocusCount === 0; // After long break, focus count is reset to 0
+
+          set({
+            timer: {
+              ...timer,
+                isWorkPhase: true,
+                durationMs: timer.pomodoroConfig.focusMs,
+                elapsedTimeMs: 0,
+                status: 'paused',
+                targetTimestamp: null,
+                pausedAt: now,
+                phaseStartedAtMs: null,
+                pomodoroFocusCount: wasLongBreak ? 0 : timer.pomodoroFocusCount,
+              },
+              sessions,
+            });
         }
 
-        // Pure alternation: Focus -> Break -> Focus ... (no round counting,
-        // so no off-by-one is possible).
-        // Manual phases: the next phase is staged stopped (paused with a
-        // full duration and no target). The user presses Start to begin it,
-        // which anchors the phase clock via resumeTimer. No auto-start.
-        const nextIsWorkPhase = !timer.isWorkPhase;
-        const durationMs = nextIsWorkPhase
-          ? timer.pomodoroConfig.focusMs
-          : timer.pomodoroConfig.breakMs;
-
-        phaseStartedAtMs = null;
-
-        set({
-          timer: {
-            ...timer,
-            isWorkPhase: nextIsWorkPhase,
-            durationMs,
-            elapsedTimeMs: 0,
-            status: 'paused',
-            targetTimestamp: null,
-            pausedAt: now,
-          },
-          sessions,
-        });
+        playCompletionSound(timer, useSettingsStore.getState().settings);
       },
 
       updateElapsedTime: (elapsedMs) => {
@@ -497,7 +597,6 @@ export const useTimerStore = create<TimerStoreState>()(
       },
 
       clearTimer: () => {
-        phaseStartedAtMs = null;
         set({ timer: createInitialTimerState() });
       },
     }),
@@ -508,14 +607,15 @@ export const useTimerStore = create<TimerStoreState>()(
         // Never persist callbacks: explicitly strip onComplete (functions
         // cannot survive JSON storage) alongside the runtime-state reset.
         // History records are pure data and persist bounded, newest last.
+        // Issue #11: the live status, targetTimestamp, pausedAt, and
+        // phaseStartedAtMs persist verbatim so a running or paused phase
+        // reconstructs after process death. Elapsed time was already
+        // persisted; together they fully describe the phase.
         const { onComplete: _omittedCallback, ...persistableTimer } = state.timer;
         void _omittedCallback;
         return {
           timer: {
             ...persistableTimer,
-            status: 'idle' as TimerStatus,
-            targetTimestamp: null,
-            pausedAt: null,
           },
           sessions: state.sessions.slice(-MAX_SESSIONS),
         };
@@ -525,23 +625,63 @@ export const useTimerStore = create<TimerStoreState>()(
 );
 
 /**
- * Restore timer state on app launch
- * This should be called when the app starts
+ * Restore timer state on app launch (Issue #11).
+ *
+ * The persisted snapshot is authoritative: status, targetTimestamp,
+ * elapsedTimeMs, and phaseStartedAtMs were written together, so the live
+ * phase reconstructs exactly.
+ * - running + future target: left running; ActiveTimer recomputes the
+ *   display from the timestamp and the notification service reschedules.
+ * - running + past target (finished while dead): routed through the mode's
+ *   NORMAL transition — countdown completes, pomodoro advances phase,
+ *   interval advances round — so recording rules (focus/work only,
+ *   exactly-once guards) apply unchanged. A second launch finds a
+ *   non-running state and no-ops, so no duplicate history.
+ * - running count-up: left running; its anchor is permanently in the past
+ *   by design, and count-up never completes. Elapsed time reconstructs as
+ *   now - targetTimestamp with no action needed.
+ * - running without a target (corrupt/legacy): coerced to idle rather
+ *   than leaving the UI stuck.
+ * - paused/completed/idle: left untouched. Paused keeps its frozen elapsed
+ *   time and its phase clock; completed is terminal and never resurrected.
  */
 export const restoreTimerState = () => {
-  const { timer, startTimer } = useTimerStore.getState();
-  
-  // If timer was running, recalculate state based on timestamps
-  if (timer.status === 'running' && timer.targetTimestamp) {
-    const now = Date.now();
-    const remaining = timer.targetTimestamp - now;
-    
-    if (remaining <= 0) {
-      // Timer completed while app was closed
-      useTimerStore.getState().completeTimer();
-    } else {
-      // Timer still running, keep it running with updated timestamp
-      // The UI will pick up the correct remaining time
+  const store = useTimerStore.getState();
+  const { timer } = store;
+
+  if (timer.status !== 'running') return;
+  if (timer.mode === 'countup') return;
+  if (typeof timer.targetTimestamp !== 'number') {
+    store.resetTimer();
+    return;
+  }
+  if (timer.targetTimestamp - Date.now() > 0) {
+    // Still running: UI and notifications pick up the persisted
+    // targetTimestamp with no further action.
+    return;
+  }
+  // Finished while dead: use the mode's own transition so history rules
+  // (focus/work records only, exactly-once) hold exactly as foreground.
+  // P10: a phase that elapsed while the process was dead is not a live
+  // completion event, so the recovery transition is dispatched silently.
+  withoutCompletionSound(() => {
+    if (timer.mode === 'countdown') {
+      store.completeTimer();
+    } else if (timer.mode === 'pomodoro') {
+      store.nextPomodoroPhase();
+    } else if (timer.mode === 'interval') {
+      store.nextRound();
     }
+  });
+  // If the transition declined (e.g. a legacy snapshot missing its phase
+  // config), the phase would sit expired-but-running forever: fall back to
+  // idle with no record rather than leaving the UI stuck.
+  const after = useTimerStore.getState().timer;
+  if (
+    after.status === 'running' &&
+    typeof after.targetTimestamp === 'number' &&
+    after.targetTimestamp - Date.now() <= 0
+  ) {
+    store.resetTimer();
   }
 };

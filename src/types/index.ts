@@ -1,6 +1,18 @@
 /**
- * Timer mode types
+ * Maximum length for session labels.
  */
+export const MAX_LABEL_LENGTH = 60;
+
+/**
+ * Normalizes a session label: trims whitespace, enforces max length.
+ * Returns undefined for empty/whitespace-only input or undefined input.
+ */
+export function normalizeLabel(label: string | undefined): string | undefined {
+  if (!label) return undefined;
+  const trimmed = label.trim();
+  if (trimmed.length === 0) return undefined;
+  return trimmed.slice(0, MAX_LABEL_LENGTH);
+}
 export type TimerMode = 'pomodoro' | 'countdown' | 'countup' | 'interval';
 
 /**
@@ -42,6 +54,10 @@ export interface IntervalConfig {
 export interface PomodoroConfig {
   focusMs: number;
   breakMs: number;
+  /** Long break duration (used after the configured number of focus sessions). */
+  longBreakMs: number;
+  /** Number of focus sessions before a long break occurs. */
+  sessionsBeforeLongBreak: number;
 }
 
 /**
@@ -68,6 +84,8 @@ export interface FocusSession {
   actualDurationMs: number;
   startedAtMs: number;
   completedAtMs: number;
+  /** Optional user-defined label for this focus session. */
+  label?: string;
 }
 
 /**
@@ -97,6 +115,23 @@ export interface TimerState {
   currentRound: number;
   totalRounds: number;
   isWorkPhase: boolean;
+  /**
+   * Number of completed focus sessions in the current Pomodoro cycle.
+   * Used to determine when to trigger a long break.
+   * Persisted alongside timer state so it survives process death.
+   */
+  pomodoroFocusCount: number;
+  /**
+   * Wall-clock moment the CURRENT phase began running. Persisted alongside
+   * the phase it describes so history records keep their true start across
+   * process death. Nulled exactly when no phase is active (initialize,
+   * reset, clear, terminal completion); never touched by pause/resume.
+   */
+  phaseStartedAtMs: number | null;
+
+  // Optional user-defined label for the active timer/session.
+  // Set at timer initialization, persisted alongside timer state.
+  label?: string;
 
   // Completion callback
   onComplete?: () => void;
@@ -110,30 +145,35 @@ export interface AppSettings {
   theme: ThemeMode;
   accentColor: string;
   fontFamily: FontFamily;
-  timerFontSize: number;
-  animationIntensity: 'none' | 'low' | 'medium' | 'high';
 
   // Timer defaults
   pomodoroFocusMs: number;
   pomodoroBreakMs: number;
   countdownDurationMs: number;  // Independent countdown duration
+  // Reserved (dormant): quick-select presets for a future Countdown presets
+  // feature. Persisted but not currently read, displayed, or edited.
   countdownPresetsMs: number[];
   intervalWorkMs: number;       // Independent interval work duration
   intervalRestMs: number;       // Independent interval rest duration
   intervalRounds: number;       // Independent interval rounds
   autoStartNextInterval: boolean;
+  // Countdown completion behavior (P9): 'stop' ends the timer after one
+  // cycle; 'repeat' automatically starts a fresh Countdown cycle.
+  // 'continue' is retained for compatibility but behaves as 'stop'.
   timerCompletionBehavior: 'stop' | 'repeat' | 'continue';
 
-  // Audio
+  // Audio: whether a phase completion plays a sound, and which one. The
+  // decision + dispatch boundary lives in services/completionSound, driven
+  // by the canonical completion transitions in the timer store.
   soundEnabled: boolean;
   completionSound: string;
-  ambientAudioEnabled: boolean;
-  ambientAudioTrack: string | null;
-  ambientAudioVolume: number;
 
   // Haptics
   hapticsEnabled: boolean;
-  completionHapticIntensity: 'light' | 'medium' | 'heavy';
+
+  // Notifications (Issue #9): whether the one-time notification permission
+  // prompt has already been shown. Timer works identically either way.
+  notificationsAsked: boolean;
 
   // Display
   keepScreenAwake: boolean;
@@ -142,6 +182,13 @@ export interface AppSettings {
   // Accessibility
   reducedMotion: boolean;
   fontScale: number;
+
+  // Goals
+  dailyFocusGoalMs: number;
+
+  // Pomodoro
+  pomodoroLongBreakMs: number;
+  pomodoroSessionsBeforeLongBreak: number;
 }
 
 /**
@@ -151,8 +198,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   accentColor: '#00F5D4',
   fontFamily: 'inter',
-  timerFontSize: 1,
-  animationIntensity: 'low',
   pomodoroFocusMs: 25 * 60 * 1000,
   pomodoroBreakMs: 5 * 60 * 1000,
   countdownDurationMs: 10 * 60 * 1000,  // Default 10 minutes for countdown
@@ -170,15 +215,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   timerCompletionBehavior: 'stop',
   soundEnabled: true,
   completionSound: 'gentle-chime',
-  ambientAudioEnabled: false,
-  ambientAudioTrack: null,
-  ambientAudioVolume: 0.5,
   hapticsEnabled: true,
-  completionHapticIntensity: 'medium',
+  notificationsAsked: false,
   keepScreenAwake: true,
   fullscreenMode: true,
   reducedMotion: false,
   fontScale: 1.0,
+  dailyFocusGoalMs: 2 * 60 * 60 * 1000, // Default 2 hours
+  pomodoroLongBreakMs: 15 * 60 * 1000, // Default 15 minutes
+  pomodoroSessionsBeforeLongBreak: 4, // Default 4 focus sessions before long break
 };
 
 /**

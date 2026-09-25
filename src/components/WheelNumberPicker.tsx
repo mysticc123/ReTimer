@@ -51,7 +51,6 @@ export const WheelNumberPicker: React.FC<WheelNumberPickerProps> = ({
   visibleRows = 5,
 }) => {
   const { colors, accentColor, fontFamily } = useTheme();
-  const fontScale = useSettingsStore((state) => state.settings.fontScale);
   const reduceMotion = useSettingsStore((state) => state.settings.reducedMotion);
 
   // Force an odd row count so exactly one row sits in the center.
@@ -69,8 +68,8 @@ export const WheelNumberPicker: React.FC<WheelNumberPickerProps> = ({
   // Last index already reported via onChange (avoids duplicate commits).
   const lastSentIndex = useRef<number>(value - min);
 
-  const selectedFontSize = Math.min(24 * fontScale, rowHeight - 14);
-  const normalFontSize = Math.min(17 * fontScale, rowHeight - 20);
+  const selectedFontSize = Math.min(24, rowHeight - 14);
+  const normalFontSize = Math.min(17, rowHeight - 20);
 
   const commitIndex = (index: number) => {
     const clamped = Math.max(0, Math.min(data.length - 1, index));

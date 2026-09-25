@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,9 @@ import {
   Modal,
   Pressable,
   useWindowDimensions,
+  AppState,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -17,28 +18,18 @@ import { useTheme, resolveTypeface } from '../theme';
 import { useSettingsStore, useTimerStore } from '../store';
 import { PressableScale } from '../components/PressableScale';
 import { formatDurationShort } from '../utils/durationFormat';
-import { getScaledSize } from '../utils/fontScale';
+import { startOfDay } from '../utils/analytics';
+import { buildSections, type HistorySection } from '../utils/history';
 import { spacing, typography, borderRadius } from '../theme/colors';
 import type { FocusSession } from '../types';
 
 type RootStackParamList = {
   Landing: undefined;
   History: undefined;
+  Analytics: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-interface HistorySection {
-  title: string;
-  data: FocusSession[];
-}
-
-/** Local-midnight timestamp for the day containing `timestamp`. */
-function startOfDay(timestamp: number): number {
-  const date = new Date(timestamp);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
 
 /** Time only, device locale: "2:30 PM". */
 function formatTimeOnly(timestampMs: number): string {
@@ -80,34 +71,15 @@ function sessionTitle(session: FocusSession): string {
 }
 
 /**
- * Build the three fixed date buckets (newest-first within each),
- * grouping by completion day so midnight crossovers count on the
- * day the session finished.
+ * Builds the full title with optional label prefix.
+ * Returns "Label\nTitle" if label exists, otherwise just Title.
  */
-function buildSections(sessions: FocusSession[]): HistorySection[] {
-  const sorted = [...sessions].sort((a, b) => b.completedAtMs - a.completedAtMs);
-  const todayStart = startOfDay(Date.now());
-  const yesterdayStart = todayStart - 24 * 60 * 60 * 1000;
-
-  const today: FocusSession[] = [];
-  const yesterday: FocusSession[] = [];
-  const earlier: FocusSession[] = [];
-
-  for (const session of sorted) {
-    if (session.completedAtMs >= todayStart) {
-      today.push(session);
-    } else if (session.completedAtMs >= yesterdayStart) {
-      yesterday.push(session);
-    } else {
-      earlier.push(session);
-    }
+function sessionTitleWithLabel(session: FocusSession): string {
+  const title = sessionTitle(session);
+  if (session.label) {
+    return `${session.label}\n${title}`;
   }
-
-  const sections: HistorySection[] = [];
-  if (today.length > 0) sections.push({ title: 'Today', data: today });
-  if (yesterday.length > 0) sections.push({ title: 'Yesterday', data: yesterday });
-  if (earlier.length > 0) sections.push({ title: 'Earlier', data: earlier });
-  return sections;
+  return title;
 }
 
 export const HistoryScreen: React.FC = () => {
@@ -120,13 +92,39 @@ export const HistoryScreen: React.FC = () => {
   // Narrow selectors: re-render only when history or relevant settings change.
   const sessions = useTimerStore((state) => state.sessions);
   const clearSessionHistory = useTimerStore((state) => state.clearSessionHistory);
-  const fontScale = useSettingsStore((state) => state.settings.fontScale);
   const reducedMotion = useSettingsStore((state) => state.settings.reducedMotion);
   const hapticsEnabled = useSettingsStore((state) => state.settings.hapticsEnabled);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const sections = useMemo(() => buildSections(sessions), [sessions]);
+  // Local-calendar-day refresh token. The section buckets are date-relative,
+  // so a screen mounted across midnight must recompute even when `sessions`
+  // is unchanged. The token only changes when the local day changes, so
+  // ordinary foreground/focus events never cause an extra render.
+  const [dayKey, setDayKey] = useState(() => startOfDay(Date.now()));
+  const refreshDayKey = useCallback(() => {
+    const key = startOfDay(Date.now());
+    setDayKey((prev) => (prev === key ? prev : key));
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        refreshDayKey();
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [refreshDayKey]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshDayKey();
+    }, [refreshDayKey])
+  );
+
+  const sections = useMemo(() => buildSections(sessions), [sessions, dayKey]);
   const totalFocusedMs = useMemo(
     () => sessions.reduce((sum, session) => sum + session.actualDurationMs, 0),
     [sessions]
@@ -157,26 +155,26 @@ export const HistoryScreen: React.FC = () => {
     return (
       <View
         style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        accessibilityLabel={`${sessionTitle(item)}, completed ${detail}`}
+        accessibilityLabel={`${sessionTitleWithLabel(item)}, completed ${detail}`}
       >
         <Text
           style={[
             styles.rowTitle,
             {
               color: colors.primaryText,
-              fontSize: getScaledSize(typography.fontSizes.md, fontScale),
+              fontSize: typography.fontSizes.md,
               fontFamily: resolveTypeface(fontFamily, '500'),
             },
           ]}
         >
-          {sessionTitle(item)}
+          {sessionTitleWithLabel(item)}
         </Text>
         <Text
           style={[
             styles.rowDetail,
             {
               color: colors.secondaryText,
-              fontSize: getScaledSize(typography.fontSizes.sm, fontScale),
+              fontSize: typography.fontSizes.sm,
               fontFamily: resolveTypeface(fontFamily, '400'),
             },
           ]}
@@ -193,7 +191,7 @@ export const HistoryScreen: React.FC = () => {
         styles.sectionTitle,
         {
           color: colors.secondaryText,
-          fontSize: getScaledSize(typography.fontSizes.sm, fontScale),
+          fontSize: typography.fontSizes.sm,
           fontFamily: resolveTypeface(fontFamily, '600'),
           backgroundColor: colors.background,
         },
@@ -221,6 +219,7 @@ export const HistoryScreen: React.FC = () => {
           onPress={() => navigation.goBack()}
           accessibilityLabel="Go back"
           accessibilityRole="button"
+          hitSlop={{ top: 14, bottom: 14, left: 12, right: 12 }}
         >
           <Text
             style={[
@@ -228,7 +227,7 @@ export const HistoryScreen: React.FC = () => {
               {
                 color: accentColor,
                 fontFamily: resolveTypeface(fontFamily, '500'),
-                fontSize: getScaledSize(typography.fontSizes.md, fontScale),
+                fontSize: typography.fontSizes.md,
               },
             ]}
           >
@@ -242,7 +241,7 @@ export const HistoryScreen: React.FC = () => {
             {
               color: colors.primaryText,
               fontFamily: resolveTypeface(fontFamily, '600'),
-              fontSize: getScaledSize(typography.fontSizes.xl, fontScale),
+              fontSize: typography.fontSizes.xl,
             },
           ]}
         >
@@ -250,26 +249,66 @@ export const HistoryScreen: React.FC = () => {
         </Text>
 
         {sessions.length > 0 ? (
+          <View style={styles.headerActions}>
+            <PressableScale
+              onPress={() => navigation.navigate('Analytics')}
+              accessibilityLabel="Open analytics"
+              accessibilityRole="button"
+              hitSlop={{ top: 14, bottom: 14, left: 12, right: 8 }}
+            >
+              <Text
+                style={[
+                  styles.headerAction,
+                  {
+                    color: accentColor,
+                    fontFamily: resolveTypeface(fontFamily, '500'),
+                    fontSize: typography.fontSizes.md,
+                  },
+                ]}
+              >
+                Stats
+              </Text>
+            </PressableScale>
+            <PressableScale
+              onPress={handleClearPress}
+              accessibilityLabel="Clear session history"
+              accessibilityRole="button"
+              hitSlop={{ top: 14, bottom: 14, left: 8, right: 12 }}
+            >
+              <Text
+                style={[
+                  styles.headerAction,
+                  {
+                    color: accentColor,
+                    fontFamily: resolveTypeface(fontFamily, '500'),
+                    fontSize: typography.fontSizes.md,
+                  },
+                ]}
+              >
+                Clear
+              </Text>
+            </PressableScale>
+          </View>
+        ) : (
           <PressableScale
-            onPress={handleClearPress}
-            accessibilityLabel="Clear session history"
+            onPress={() => navigation.navigate('Analytics')}
+            accessibilityLabel="Open analytics"
             accessibilityRole="button"
+            hitSlop={{ top: 14, bottom: 14, left: 12, right: 12 }}
           >
             <Text
               style={[
-                styles.clearButton,
+                styles.headerAction,
                 {
                   color: accentColor,
                   fontFamily: resolveTypeface(fontFamily, '500'),
-                  fontSize: getScaledSize(typography.fontSizes.md, fontScale),
+                  fontSize: typography.fontSizes.md,
                 },
               ]}
             >
-              Clear
+              Stats
             </Text>
           </PressableScale>
-        ) : (
-          <View style={styles.headerSpacer} />
         )}
       </View>
 
@@ -281,7 +320,7 @@ export const HistoryScreen: React.FC = () => {
               {
                 color: colors.primaryText,
                 fontFamily: resolveTypeface(fontFamily, '600'),
-                fontSize: getScaledSize(typography.fontSizes.lg, fontScale),
+                fontSize: typography.fontSizes.lg,
               },
             ]}
           >
@@ -293,7 +332,7 @@ export const HistoryScreen: React.FC = () => {
               {
                 color: colors.secondaryText,
                 fontFamily: resolveTypeface(fontFamily, '400'),
-                fontSize: getScaledSize(typography.fontSizes.md, fontScale),
+                fontSize: typography.fontSizes.md,
               },
             ]}
           >
@@ -303,6 +342,7 @@ export const HistoryScreen: React.FC = () => {
             onPress={() => navigation.goBack()}
             accessibilityLabel="Start a timer"
             accessibilityRole="button"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={styles.emptyButton}
           >
             <Text
@@ -311,7 +351,7 @@ export const HistoryScreen: React.FC = () => {
                 {
                   color: accentColor,
                   fontFamily: resolveTypeface(fontFamily, '500'),
-                  fontSize: getScaledSize(typography.fontSizes.md, fontScale),
+                  fontSize: typography.fontSizes.md,
                 },
               ]}
             >
@@ -345,7 +385,7 @@ export const HistoryScreen: React.FC = () => {
                     {
                       color: colors.primaryText,
                       fontFamily: resolveTypeface(fontFamily, '700'),
-                      fontSize: getScaledSize(typography.fontSizes.xl, fontScale),
+                      fontSize: typography.fontSizes.xl,
                     },
                   ]}
                 >
@@ -357,7 +397,7 @@ export const HistoryScreen: React.FC = () => {
                     {
                       color: colors.secondaryText,
                       fontFamily: resolveTypeface(fontFamily, '400'),
-                      fontSize: getScaledSize(typography.fontSizes.sm, fontScale),
+                      fontSize: typography.fontSizes.sm,
                     },
                   ]}
                 >
@@ -372,7 +412,7 @@ export const HistoryScreen: React.FC = () => {
                     {
                       color: colors.primaryText,
                       fontFamily: resolveTypeface(fontFamily, '700'),
-                      fontSize: getScaledSize(typography.fontSizes.xl, fontScale),
+                      fontSize: typography.fontSizes.xl,
                     },
                   ]}
                 >
@@ -384,7 +424,7 @@ export const HistoryScreen: React.FC = () => {
                     {
                       color: colors.secondaryText,
                       fontFamily: resolveTypeface(fontFamily, '400'),
-                      fontSize: getScaledSize(typography.fontSizes.sm, fontScale),
+                      fontSize: typography.fontSizes.sm,
                     },
                   ]}
                 >
@@ -429,7 +469,7 @@ export const HistoryScreen: React.FC = () => {
                 styles.confirmTitle,
                 {
                   color: colors.primaryText,
-                  fontSize: getScaledSize(typography.fontSizes.lg, fontScale),
+                  fontSize: typography.fontSizes.lg,
                   fontFamily: resolveTypeface(fontFamily, '600'),
                 },
               ]}
@@ -441,7 +481,7 @@ export const HistoryScreen: React.FC = () => {
                 styles.confirmMessage,
                 {
                   color: colors.secondaryText,
-                  fontSize: getScaledSize(typography.fontSizes.md, fontScale),
+                  fontSize: typography.fontSizes.md,
                   fontFamily: resolveTypeface(fontFamily, '400'),
                 },
               ]}
@@ -460,7 +500,7 @@ export const HistoryScreen: React.FC = () => {
                     styles.buttonText,
                     {
                       color: colors.secondaryText,
-                      fontSize: getScaledSize(typography.fontSizes.md, fontScale),
+                      fontSize: typography.fontSizes.md,
                       fontFamily: resolveTypeface(fontFamily, '600'),
                     },
                   ]}
@@ -479,7 +519,7 @@ export const HistoryScreen: React.FC = () => {
                     styles.buttonText,
                     styles.deleteButtonText,
                     {
-                      fontSize: getScaledSize(typography.fontSizes.md, fontScale),
+                      fontSize: typography.fontSizes.md,
                       fontFamily: resolveTypeface(fontFamily, '600'),
                     },
                   ]}
@@ -510,13 +550,18 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 60,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
   backButton: {
     fontWeight: typography.fontWeights.medium,
   },
   title: {
     fontWeight: typography.fontWeights.semibold,
   },
-  clearButton: {
+  headerAction: {
     fontWeight: typography.fontWeights.medium,
   },
   listContent: {

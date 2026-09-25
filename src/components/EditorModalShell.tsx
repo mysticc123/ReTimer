@@ -6,7 +6,7 @@ import { useTheme, resolveTypeface } from '../theme';
 import { useSettingsStore } from '../store';
 import { PressableScale } from './PressableScale';
 import { useModalEnterScale } from './useModalEnterScale';
-import { spacing, typography, borderRadius } from '../theme/colors';
+import { spacing, typography, borderRadius, getContrastText, colors as themeTokens } from '../theme/colors';
 
 interface EditorModalShellProps {
   visible: boolean;
@@ -35,7 +35,6 @@ export const EditorModalShell: React.FC<EditorModalShellProps> = ({
   children,
 }) => {
   const { colors, accentColor, fontFamily, typeface } = useTheme();
-  const fontScale = useSettingsStore((state) => state.settings.fontScale);
   const reduceMotion = useSettingsStore((state) => state.settings.reducedMotion);
   const hapticsEnabled = useSettingsStore((state) => state.settings.hapticsEnabled);
   const enterScaleStyle = useModalEnterScale(visible, reduceMotion);
@@ -82,7 +81,7 @@ export const EditorModalShell: React.FC<EditorModalShellProps> = ({
               styles.title,
               {
                 color: colors.primaryText,
-                fontSize: typography.fontSizes.lg * fontScale,
+                fontSize: typography.fontSizes.lg,
                 fontFamily: resolveTypeface(fontFamily, '600'),
               },
             ]}
@@ -97,7 +96,7 @@ export const EditorModalShell: React.FC<EditorModalShellProps> = ({
               <Text
                 style={[
                   styles.errorText,
-                  { fontSize: typography.fontSizes.sm * fontScale, fontFamily: typeface },
+                  { fontSize: typography.fontSizes.sm, fontFamily: typeface },
                 ]}
                 accessibilityRole="alert"
               >
@@ -118,7 +117,7 @@ export const EditorModalShell: React.FC<EditorModalShellProps> = ({
                   styles.buttonText,
                   {
                     color: colors.secondaryText,
-                    fontSize: typography.fontSizes.md * fontScale,
+                    fontSize: typography.fontSizes.md,
                     fontFamily: resolveTypeface(fontFamily, '600'),
                   },
                 ]}
@@ -137,18 +136,18 @@ export const EditorModalShell: React.FC<EditorModalShellProps> = ({
                 { backgroundColor: accentColor, opacity: saveDisabled ? 0.5 : 1 },
               ]}
             >
-              <Text
-                style={[
-                  styles.buttonText,
-                  styles.saveButtonText,
-                  {
-                    fontSize: typography.fontSizes.md * fontScale,
-                    fontFamily: resolveTypeface(fontFamily, '600'),
-                  },
-                ]}
-              >
-                Save
-              </Text>
+                <Text
+                  style={[
+                    styles.buttonText,
+                    {
+                      color: getContrastText(accentColor),
+                      fontSize: typography.fontSizes.md,
+                      fontFamily: resolveTypeface(fontFamily, '600'),
+                    },
+                  ]}
+                >
+                  Save
+                </Text>
             </PressableScale>
           </View>
         </Animated.View>
@@ -188,7 +187,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   errorText: {
-    color: '#FF6B6B',
+    color: themeTokens.status.error,
     textAlign: 'center',
   },
   buttonsRow: {
@@ -207,8 +206,5 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontWeight: typography.fontWeights.semibold,
-  },
-  saveButtonText: {
-    color: '#000000',
   },
 });

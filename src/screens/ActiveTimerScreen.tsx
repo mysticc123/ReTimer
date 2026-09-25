@@ -9,7 +9,7 @@ import { useSettingsStore, useTimerStore } from '../store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { resolveTypeface } from '../theme';
 import { PressableScale } from '../components/PressableScale';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { getThemeColors, colors } from '../theme/colors';
 import { spacing, typography, borderRadius } from '../theme/colors';
 
@@ -95,8 +95,14 @@ export const ActiveTimerScreen: React.FC = () => {
           return;
         }
         // Normal timer completed — persist completed status so resume/start can't get stuck.
+        // P9: with Countdown repeat, completeTimer() restarts a fresh running
+        // cycle instead of stopping; keep the display loop alive in that case
+        // (same stale-closure discipline as interval auto-start above).
         completeTimer();
-        setIsRunning(false);
+        const freshStatus = useTimerStore.getState().timer.status;
+        if (freshStatus !== 'running') {
+          setIsRunning(false);
+        }
         if (settings.hapticsEnabled) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         }
@@ -113,8 +119,18 @@ export const ActiveTimerScreen: React.FC = () => {
     if (settings.hapticsEnabled) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
-    
-    if (timer.status === 'idle' || timer.status === 'paused') {
+
+    if (timer.status === 'completed') {
+      // Restart the same configuration: resetTimer clears the terminal
+      // state (writes no history, nulls the phase clock) and startTimer
+      // anchors a fresh phase clock from idle. Identical to the existing
+      // long-press-reset then tap sequence; the new run records exactly
+      // one session if and when it completes.
+      lastUpdateRef.current = Date.now();
+      resetTimer();
+      startTimer();
+      setIsRunning(true);
+    } else if (timer.status === 'idle' || timer.status === 'paused') {
       if (timer.status === 'paused') {
         resumeTimer();
       } else {
@@ -123,7 +139,7 @@ export const ActiveTimerScreen: React.FC = () => {
       }
       setIsRunning(true);
     }
-  }, [timer.status, startTimer, resumeTimer, settings.hapticsEnabled]);
+  }, [timer.status, startTimer, resumeTimer, resetTimer, settings.hapticsEnabled]);
 
   const handlePause = useCallback(() => {
     if (settings.hapticsEnabled) {
@@ -224,12 +240,35 @@ export const ActiveTimerScreen: React.FC = () => {
     <>
       <StatusBar style={settings.theme !== 'light' ? 'light' : 'dark'} hidden={settings.fullscreenMode || isLandscape} />
 
-      <Pressable
+<Pressable
         onPress={handleTap}
         onLongPress={handleLongPress}
-        accessibilityLabel={isRunning ? 'Pause timer' : 'Start timer'}
+        accessibilityLabel={
+          isRunning
+            ? 'Pause timer'
+            : timer.status === 'completed'
+            ? 'Restart timer'
+            : 'Start timer'
+        }
+        accessibilityHint={
+          (() => {
+            let hint = timer.status === 'completed'
+              ? 'Tap to restart the same timer. Long press to reset.'
+              : 'Tap to pause or resume. Long press to reset.';
+            // Include phase/mode context for accessibility
+            if (timer.mode === 'pomodoro' && timer.pomodoroConfig) {
+              const phase = timer.isWorkPhase ? 'Focus' : timer.pomodoroFocusCount === 0 ? 'Long break' : 'Break';
+              hint = `${phase}. ${hint}`;
+            } else if (timer.mode === 'interval' && timer.intervalConfig) {
+              const phase = timer.isWorkPhase ? 'Work' : 'Rest';
+              hint = `${phase}, round ${timer.currentRound + 1} of ${timer.totalRounds}. ${hint}`;
+            } else if (timer.mode === 'countup') {
+              hint = `Counting up. ${hint}`;
+            }
+            return hint;
+          })()
+        }
         accessibilityRole="button"
-        accessibilityHint="Tap to pause or resume. Long press to reset."
         style={[
           styles.container,
           {
@@ -248,66 +287,13 @@ export const ActiveTimerScreen: React.FC = () => {
               {
                 color: isRunning ? accentColor : themeColors.primaryText,
                 fontSize: fontSize,
-                fontFamily: settings.fontFamily === 'inter' ? 'System' : 'monospace',
+                fontFamily: resolveTypeface(settings.fontFamily, '700'),
               },
             ]}
             allowFontScaling={false}
           >
             {timeString}
           </Text>
-          
-          {(timer.mode === 'countup' ||
-            (timer.mode === 'pomodoro' && !timer.pomodoroConfig)) && (
-            <Text
-              style={[
-                styles.modeText,
-                {
-                  color: themeColors.secondaryText,
-                  fontFamily: resolveTypeface(settings.fontFamily, '400'),
-                },
-              ]}
-            >
-              {timer.mode === 'pomodoro' && 'Pomodoro'}
-              {timer.mode === 'countup' && 'Counting Up'}
-            </Text>
-          )}
-
-          {((timer.mode === 'interval' && timer.intervalConfig) ||
-            (timer.mode === 'pomodoro' && timer.pomodoroConfig)) && (
-            <Animated.Text
-              key={`${timer.isWorkPhase ? 'work' : 'rest'}-${timer.status !== 'idle' ? 'visible' : 'hidden'}`}
-              entering={settings.reducedMotion ? undefined : FadeIn.duration(150)}
-              style={[
-                styles.modeText,
-                {
-                  color: timer.isWorkPhase ? accentColor : themeColors.secondaryText,
-                  opacity: timer.status !== 'idle' ? 1 : 0,
-                  fontFamily: resolveTypeface(settings.fontFamily, '400'),
-                },
-              ]}
-              accessibilityElementsHidden={timer.status === 'idle'}
-              importantForAccessibility={timer.status === 'idle' ? 'no-hide-descendants' : 'yes'}
-            >
-              {timer.status !== 'idle' ? (timer.isWorkPhase ? 'WORK' : 'REST') : 'WORK'}
-            </Animated.Text>
-          )}
-
-          <Animated.Text
-            key={timer.status}
-            entering={settings.reducedMotion ? undefined : FadeIn.duration(150)}
-            style={[
-              styles.statusText,
-              {
-                color: themeColors.secondaryText,
-                fontFamily: resolveTypeface(settings.fontFamily, '400'),
-              },
-            ]}
-          >
-            {timer.status === 'idle' && 'Tap to start'}
-            {timer.status === 'running' && 'Running'}
-            {timer.status === 'paused' && 'Paused'}
-            {timer.status === 'completed' && 'Completed'}
-          </Animated.Text>
         </View>
 
         {timer.intervalConfig && (
@@ -384,16 +370,6 @@ const styles = StyleSheet.create({
     letterSpacing: -2,
     fontVariant: ['tabular-nums'],
     textAlign: 'center',
-  },
-  modeText: {
-    fontSize: typography.fontSizes.md,
-    marginTop: spacing.lg,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 2,
-  },
-  statusText: {
-    fontSize: typography.fontSizes.sm,
-    marginTop: spacing.md,
   },
   roundIndicator: {
     position: 'absolute',

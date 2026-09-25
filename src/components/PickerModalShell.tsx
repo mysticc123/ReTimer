@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { useTheme } from '../theme';
+import { useTheme, resolveTypeface } from '../theme';
 import { useSettingsStore } from '../store';
 import { useModalEnterScale } from './useModalEnterScale';
 import { spacing, typography, borderRadius } from '../theme/colors';
@@ -29,7 +29,7 @@ export const PickerModalShell: React.FC<PickerModalShellProps> = ({
   onClose,
   children,
 }) => {
-  const { colors, typeface } = useTheme();
+  const { colors, fontFamily } = useTheme();
   const reduceMotion = useSettingsStore((state) => state.settings.reducedMotion);
   const enterScaleStyle = useModalEnterScale(visible, reduceMotion);
 
@@ -63,13 +63,12 @@ export const PickerModalShell: React.FC<PickerModalShellProps> = ({
           ]}
         >
           <Text
-            allowFontScaling={false}
             style={[
               styles.title,
               {
                 color: colors.primaryText,
                 fontSize: typography.fontSizes.lg,
-                fontFamily: typeface,
+                fontFamily: resolveTypeface(fontFamily, '600'),
               },
             ]}
           >

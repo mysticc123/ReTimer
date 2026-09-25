@@ -1,17 +1,25 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Platform, AppState } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme, resolveTypeface } from '../theme';
 import { useSettingsStore } from '../store';
+import type { AppSettings } from '../types';
 import { SettingsRow } from '../components/SettingsRow';
+import { SettingsSwitchRow } from '../components/SettingsSwitchRow';
 import { PressableScale } from '../components/PressableScale';
 import { AccentColorPickerModal } from '../components/AccentColorPickerModal';
 import { FontStylePickerModal } from '../components/FontStylePickerModal';
 import { ThemePickerModal } from '../components/ThemePickerModal';
-import { spacing, typography, borderRadius, colors, accentOptions, fontOptions, themeOptions } from '../theme/colors';
+import { CompletionSoundPickerModal } from '../components/CompletionSoundPickerModal';
+import { DurationEditorModal } from '../components/DurationEditorModal';
+import { spacing, typography, borderRadius, accentOptions, fontOptions, themeOptions, colors as allColors } from '../theme/colors';
 import { SteppedFontScaleSlider } from '../components/SteppedFontScaleSlider';
+import { getExactAlarmAvailability, requestExactAlarmAccess } from '../services/notifications';
+import { completionSoundName } from '../services/completionSound';
+import { formatDurationShort } from '../utils/durationFormat';
 
 type RootStackParamList = {
   Landing: undefined;
@@ -21,14 +29,37 @@ type RootStackParamList = {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+const GOAL_MIN_MS = 15 * 60 * 1000; // 15 minutes minimum
+const GOAL_MAX_MS = 12 * 60 * 60 * 1000; // 12 hours maximum
+
+/** Boolean settings displayed as native switches. */
+type BooleanSettingKey =
+  | 'hapticsEnabled'
+  | 'soundEnabled'
+  | 'keepScreenAwake'
+  | 'fullscreenMode'
+  | 'reducedMotion';
+
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const { colors } = useTheme();
+  const { colors, typeface } = useTheme();
   const { settings, updateSettings } = useSettingsStore();
   const insets = useSafeAreaInsets();
   const [accentPickerOpen, setAccentPickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [soundPickerOpen, setSoundPickerOpen] = useState(false);
+  const [exactAlarmAvailable, setExactAlarmAvailable] = useState<boolean | null>(null);
+  const [exactAlarmRequired, setExactAlarmRequired] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState(false);
+  const [checkingExactAlarm, setCheckingExactAlarm] = useState(false);
+  const [durationEditor, setDurationEditor] = useState<{
+    key: keyof AppSettings;
+    title: string;
+    minTotalMs: number;
+    maxTotalMs: number;
+    minutesMax: number;
+  } | null>(null);
 
   const accentName =
     accentOptions.find((option) => option.value === settings.accentColor)?.name ??
@@ -39,11 +70,71 @@ export const SettingsScreen: React.FC = () => {
   const themeName =
     themeOptions.find((option) => option.id === settings.theme)?.name ??
     settings.theme;
+  const soundName = completionSoundName(settings.completionSound);
 
-  const toggleSetting = (key: keyof typeof settings, currentValue: any) => {
-    if (typeof currentValue === 'boolean') {
-      updateSettings({ [key]: !currentValue });
+  /** One shared toggle path for switch rows: light haptic (when enabled) + update. */
+  const toggleBool = (key: BooleanSettingKey | 'timerCompletionBehavior', next: boolean) => {
+    if (settings.hapticsEnabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
+    if (key === 'timerCompletionBehavior') {
+      updateSettings({ timerCompletionBehavior: next ? 'repeat' : 'stop' });
+      return;
+    }
+    updateSettings({ [key]: next });
+  };
+
+  const checkExactAlarm = async () => {
+    setCheckingExactAlarm(true);
+    try {
+      const availability = await getExactAlarmAvailability();
+      setNotificationPermission(availability.notificationPermission);
+      setExactAlarmRequired(availability.exactAlarmRequired);
+      setExactAlarmAvailable(availability.exactAlarmAvailable);
+    } catch {
+      setExactAlarmAvailable(false);
+      setExactAlarmRequired(false);
+      setNotificationPermission(false);
+    } finally {
+      setCheckingExactAlarm(false);
+    }
+  };
+
+  useEffect(() => {
+    checkExactAlarm();
+  }, []);
+
+  useEffect(() => {
+    // Re-check when the app returns to the foreground while this screen is
+    // mounted — e.g. coming back from Android's Alarms & reminders settings
+    // (which backgrounds the app without any navigation change, so no focus
+    // event fires). addEventListener only fires on state changes, so this
+    // never duplicates the mount check above. Single subscription, removed
+    // on unmount.
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void checkExactAlarm();
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const handleExactAlarmPress = async () => {
+    if (!exactAlarmRequired || exactAlarmAvailable) return;
+    await requestExactAlarmAccess();
+    await checkExactAlarm();
+  };
+
+  const openDurationEditor = (
+    key: keyof AppSettings,
+    title: string,
+    minTotalMs: number,
+    maxTotalMs: number,
+    minutesMax: number
+  ) => {
+    setDurationEditor({ key, title, minTotalMs, maxTotalMs, minutesMax });
   };
 
   return (
@@ -59,6 +150,7 @@ export const SettingsScreen: React.FC = () => {
           onPress={() => navigation.goBack()}
           accessibilityLabel="Go back"
           accessibilityRole="button"
+          hitSlop={{ top: 14, bottom: 14, left: 12, right: 12 }}
         >
           <Text
             style={[
@@ -72,7 +164,7 @@ export const SettingsScreen: React.FC = () => {
             ← Back
           </Text>
         </PressableScale>
-        
+
         <Text
           style={[
             styles.title,
@@ -84,7 +176,7 @@ export const SettingsScreen: React.FC = () => {
         >
           Settings
         </Text>
-        
+
         <View style={styles.headerSpacer} />
       </View>
 
@@ -102,32 +194,46 @@ export const SettingsScreen: React.FC = () => {
           >
             Appearance
           </Text>
-          
+
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <SettingsRow
               label="Theme"
               value={themeName}
               onPress={() => setThemePickerOpen(true)}
-              accessibilityLabel="Choose theme"
+              accessibilityLabel={`Theme, ${themeName}`}
             />
-            
             <SettingsRow
               label="Accent Color"
               value={accentName}
               onPress={() => setAccentPickerOpen(true)}
-              accessibilityLabel="Choose accent color"
+              accessibilityLabel={`Accent color, ${accentName}`}
             />
-
             <SettingsRow
               label="Font"
               value={fontName}
               onPress={() => setFontPickerOpen(true)}
-              accessibilityLabel="Choose font style"
+              accessibilityLabel={`Font, ${fontName}`}
             />
+
+            <View style={styles.fontScaleSection}>
+              <Text
+                style={[
+                  styles.fontScaleLabel,
+                  { color: colors.primaryText, fontFamily: typeface },
+                ]}
+              >
+                Text Size
+              </Text>
+
+              <SteppedFontScaleSlider
+                value={settings.fontScale}
+                onChange={(fontScale) => updateSettings({ fontScale })}
+              />
+            </View>
           </View>
         </View>
 
-        {/* Audio Section */}
+        {/* Sound & Haptics Section */}
         <View style={styles.section}>
           <Text
             style={[
@@ -138,29 +244,78 @@ export const SettingsScreen: React.FC = () => {
               },
             ]}
           >
-            Audio & Haptics
+            Sound & Haptics
           </Text>
-          
+
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <SettingsRow
-              label="Sound Effects"
+            <SettingsSwitchRow
+              label="Completion Sound"
               value={settings.soundEnabled}
-              onPress={() => toggleSetting('soundEnabled', settings.soundEnabled)}
-              accessibilityLabel="Toggle sound effects"
+              onValueChange={(next) => toggleBool('soundEnabled', next)}
+              accessibilityLabel="Play a sound when a timer phase finishes"
             />
-            
             <SettingsRow
+              label="Sound Type"
+              value={soundName}
+              onPress={() => setSoundPickerOpen(true)}
+              accessibilityLabel={`Sound type, ${soundName}`}
+            />
+            <SettingsSwitchRow
               label="Haptic Feedback"
               value={settings.hapticsEnabled}
-              onPress={() => toggleSetting('hapticsEnabled', settings.hapticsEnabled)}
-              accessibilityLabel="Toggle haptic feedback"
+              onValueChange={(next) => toggleBool('hapticsEnabled', next)}
+              accessibilityLabel="Haptic feedback"
+              showDivider={false}
             />
-            
+          </View>
+        </View>
+
+        {/* Goals Section */}
+        <View style={styles.section}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              {
+                color: colors.secondaryText,
+                fontFamily: resolveTypeface(settings.fontFamily, '600'),
+              },
+            ]}
+          >
+            Goals
+          </Text>
+
+          <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <SettingsRow
-              label="Ambient Audio"
-              value={settings.ambientAudioEnabled}
-              onPress={() => toggleSetting('ambientAudioEnabled', settings.ambientAudioEnabled)}
-              accessibilityLabel="Toggle ambient audio"
+              label="Daily Target"
+              value={formatDurationShort(settings.dailyFocusGoalMs)}
+              onPress={() => openDurationEditor('dailyFocusGoalMs', 'Daily Focus Goal', GOAL_MIN_MS, GOAL_MAX_MS, 12)}
+              accessibilityLabel={`Daily target, ${formatDurationShort(settings.dailyFocusGoalMs)}`}
+              showDivider={false}
+            />
+          </View>
+        </View>
+
+        {/* Timer Behavior Section */}
+        <View style={styles.section}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              {
+                color: colors.secondaryText,
+                fontFamily: resolveTypeface(settings.fontFamily, '600'),
+              },
+            ]}
+          >
+            Timer Behavior
+          </Text>
+
+          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+            <SettingsSwitchRow
+              label="Repeat"
+              value={settings.timerCompletionBehavior === 'repeat'}
+              onValueChange={(next) => toggleBool('timerCompletionBehavior', next)}
+              accessibilityLabel="Repeat the countdown automatically when it finishes"
+              showDivider={false}
             />
           </View>
         </View>
@@ -178,67 +333,87 @@ export const SettingsScreen: React.FC = () => {
           >
             Display
           </Text>
-          
+
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <SettingsRow
+            <SettingsSwitchRow
               label="Keep Screen Awake"
               value={settings.keepScreenAwake}
-              onPress={() => toggleSetting('keepScreenAwake', settings.keepScreenAwake)}
-              accessibilityLabel="Toggle keep screen awake"
+              onValueChange={(next) => toggleBool('keepScreenAwake', next)}
+              accessibilityLabel="Keep screen awake"
             />
-            
-            <SettingsRow
+            <SettingsSwitchRow
               label="Fullscreen Mode"
               value={settings.fullscreenMode}
-              onPress={() => toggleSetting('fullscreenMode', settings.fullscreenMode)}
-              accessibilityLabel="Toggle fullscreen mode"
+              onValueChange={(next) => toggleBool('fullscreenMode', next)}
+              accessibilityLabel="Fullscreen mode"
+            />
+            <SettingsSwitchRow
+              label="Reduced Motion"
+              value={settings.reducedMotion}
+              onValueChange={(next) => toggleBool('reducedMotion', next)}
+              accessibilityLabel="Reduced motion"
+              showDivider={false}
             />
           </View>
         </View>
 
-        {/* Accessibility Section */}
-        <View style={styles.section}>
-          <Text
-            style={[
-              styles.sectionTitle,
-              {
-                color: colors.secondaryText,
-                fontFamily: resolveTypeface(settings.fontFamily, '600'),
-              },
-            ]}
-          >
-            Accessibility
-          </Text>
-          
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <SettingsRow
-              label="Reduced Motion"
-              value={settings.reducedMotion}
-              onPress={() => toggleSetting('reducedMotion', settings.reducedMotion)}
-              accessibilityLabel="Toggle reduced motion"
-            />
-            
-            {/* Font Scale Control */}
-            <View style={styles.fontScaleSection}>
-              <Text
-                style={[
-                  styles.fontScaleLabel,
-                  {
-                    color: colors.primaryText,
-                    fontFamily: resolveTypeface(settings.fontFamily, '500'),
-                  },
-                ]}
-              >
-                Text Size
-              </Text>
-              
-              <SteppedFontScaleSlider
-                value={settings.fontScale}
-                onChange={(fontScale) => updateSettings({ fontScale })}
+        {/* Notifications Section */}
+        {Platform.OS === 'android' && (
+          <View style={styles.section}>
+            <Text
+              style={[
+                styles.sectionTitle,
+                {
+                  color: colors.secondaryText,
+                  fontFamily: resolveTypeface(settings.fontFamily, '600'),
+                },
+              ]}
+            >
+              Notifications
+            </Text>
+
+            <View style={[styles.card, { backgroundColor: colors.surface }]}>
+              <SettingsRow
+                label="Notification Permission"
+                value={notificationPermission ? 'Granted' : 'Not Granted'}
+                accessibilityLabel={`Notification permission, ${notificationPermission ? 'granted' : 'not granted'}`}
+                showDivider={exactAlarmRequired}
               />
+
+              {exactAlarmRequired && (
+                <>
+                  <SettingsRow
+                    label="Exact Alarm Access"
+                    value={exactAlarmAvailable ? 'Granted' : 'Required for reliable background notifications'}
+                    onPress={handleExactAlarmPress}
+                    accessibilityLabel={exactAlarmAvailable ? 'Exact alarm access granted' : 'Open Android settings to grant exact alarm access'}
+                    showDivider={false}
+                  />
+                  {checkingExactAlarm && (
+                    <View style={styles.checkingIndicator}>
+                      <Text style={[
+                        styles.checkingText,
+                        { color: colors.secondaryText, fontFamily: resolveTypeface(settings.fontFamily, '400') }
+                      ]}>
+                        Checking...
+                      </Text>
+                    </View>
+                  )}
+                  {!exactAlarmAvailable && !checkingExactAlarm && (
+                    <View style={styles.exactAlarmWarning}>
+                      <Text style={[
+                        styles.warningText,
+                        { color: allColors.status.warning, fontFamily: resolveTypeface(settings.fontFamily, '400'), fontSize: typography.fontSizes.xs }
+                      ]}>
+                        ⚠ Background notifications may be delayed without exact alarm access. Tap above to grant.
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
             </View>
           </View>
-        </View>
+        )}
       </ScrollView>
 
       <AccentColorPickerModal
@@ -252,6 +427,25 @@ export const SettingsScreen: React.FC = () => {
       <ThemePickerModal
         visible={themePickerOpen}
         onClose={() => setThemePickerOpen(false)}
+      />
+      <CompletionSoundPickerModal
+        visible={soundPickerOpen}
+        onClose={() => setSoundPickerOpen(false)}
+      />
+      <DurationEditorModal
+        visible={durationEditor !== null}
+        title={durationEditor?.title ?? 'Duration'}
+        initialMs={durationEditor ? settings[durationEditor.key] as number : 0}
+        minTotalMs={durationEditor?.minTotalMs ?? GOAL_MIN_MS}
+        maxTotalMs={durationEditor?.maxTotalMs ?? GOAL_MAX_MS}
+        minutesMax={durationEditor?.minutesMax ?? 12}
+        onSave={(durationMs) => {
+          if (durationEditor) {
+            updateSettings({ [durationEditor.key]: durationMs });
+          }
+          setDurationEditor(null);
+        }}
+        onCancel={() => setDurationEditor(null)}
       />
     </View>
   );
@@ -293,18 +487,32 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
     marginBottom: spacing.sm,
+    marginHorizontal: spacing.xs,
   },
   card: {
     borderRadius: borderRadius.lg,
     overflow: 'hidden',
   },
   fontScaleSection: {
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
   },
   fontScaleLabel: {
+    fontSize: typography.fontSizes.md,
+    marginBottom: spacing.xs,
+  },
+  checkingIndicator: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  checkingText: {
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium,
-    marginBottom: spacing.sm,
+  },
+  exactAlarmWarning: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  warningText: {
+    fontSize: typography.fontSizes.xs,
   },
 });

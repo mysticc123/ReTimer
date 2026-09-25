@@ -2,7 +2,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import React from 'react';
 import { useTheme, resolveTypeface } from '../theme';
 import { PressableScale } from './PressableScale';
-import { spacing, borderRadius, typography } from '../theme/colors';
+import { spacing, borderRadius, typography, getContrastText } from '../theme/colors';
 
 interface TimerCardProps {
   mode: string;
@@ -49,7 +49,9 @@ export const TimerCard: React.FC<TimerCardProps> = ({
             style={[
               styles.title,
               {
-                color: isSelected ? '#000000' : colors.primaryText,
+                color: isSelected
+                  ? getContrastText(accentColor)
+                  : colors.primaryText,
                 fontFamily: resolveTypeface(fontFamily, '600'),
               },
             ]}
@@ -62,7 +64,9 @@ export const TimerCard: React.FC<TimerCardProps> = ({
               style={[
                 styles.subtitle,
                 {
-                  color: isSelected ? '#000000' : colors.secondaryText,
+                  color: isSelected
+                    ? getContrastText(accentColor)
+                    : colors.secondaryText,
                   fontFamily: resolveTypeface(fontFamily, '400'),
                 },
               ]}

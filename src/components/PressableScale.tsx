@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import type { ComponentProps } from 'react';
 import { Pressable } from 'react-native';
 import type { GestureResponderEvent, StyleProp, ViewStyle } from 'react-native';
@@ -10,10 +10,23 @@ import {
   withTiming,
 } from 'react-native-reanimated';
 import { useSettingsStore } from '../store';
+import { useTheme } from '../theme';
 
 const AnimatedPressable = createAnimatedComponent(Pressable);
 
 type PressableProps = ComponentProps<typeof Pressable>;
+
+/**
+ * Restrained Android press tint. RN only installs a ripple when `android_ripple`
+ * is set, so without it every pressable falls back to the platform's default
+ * `colorHighlight` — a near-white overlay that flashes hard on the dark/OLED
+ * surfaces. A low-alpha overlay of the opposite luminance keeps the press
+ * legible in both themes without a bright flash. `borderless: false` keeps the
+ * ripple inside the control; `foreground: true` draws it above the row's own
+ * children (switch, chevron, value).
+ */
+const DARK_TINT = 'rgba(255, 255, 255, 0.10)';
+const LIGHT_TINT = 'rgba(0, 0, 0, 0.10)';
 
 interface PressableScaleProps {
   onPress?: (event: GestureResponderEvent) => void;
@@ -26,6 +39,13 @@ interface PressableScaleProps {
   accessibilityRole?: PressableProps['accessibilityRole'];
   accessibilityState?: PressableProps['accessibilityState'];
   accessibilityHint?: string;
+  /**
+   * Expands the tappable area beyond the visible bounds without changing
+   * layout (e.g. `{ top: 12, bottom: 12, left: 12, right: 12 }`).
+   * Use for text-only controls whose visible size is below the 48dp
+   * Android touch target. Defaults to none for all callers.
+   */
+  hitSlop?: PressableProps['hitSlop'];
   /** Scale applied while pressed. Defaults to 0.98 for all callers. */
   scaleTo?: number;
 }
@@ -42,6 +62,11 @@ interface PressableScaleProps {
  *
  * Honors the existing `reducedMotion` setting: when enabled, no scaling occurs.
  * Transform scale never affects surrounding layout.
+ *
+ * TOUCH TINT: every caller also gets the shared `androidRipple`, which replaces
+ * the platform's bright default press highlight with a theme-aware, low-alpha
+ * tint. It is not an animation, so reduced motion still gets press feedback
+ * (and only the scale animation is suppressed).
  */
 export const PressableScale: React.FC<PressableScaleProps> = ({
   onPress,
@@ -54,10 +79,21 @@ export const PressableScale: React.FC<PressableScaleProps> = ({
   accessibilityRole,
   accessibilityState,
   accessibilityHint,
+  hitSlop,
   scaleTo = 0.98,
 }) => {
   const reduceMotion = useSettingsStore((state) => state.settings.reducedMotion);
+  const { isDark } = useTheme();
   const scale = useSharedValue(1);
+
+  const androidRipple = useMemo(
+    () => ({
+      color: isDark ? DARK_TINT : LIGHT_TINT,
+      borderless: false,
+      foreground: true,
+    }),
+    [isDark]
+  );
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -88,6 +124,8 @@ export const PressableScale: React.FC<PressableScaleProps> = ({
       accessibilityRole={accessibilityRole}
       accessibilityState={accessibilityState}
       accessibilityHint={accessibilityHint}
+      hitSlop={hitSlop}
+      android_ripple={androidRipple}
       style={[style, animatedStyle]}
     >
       {children}
