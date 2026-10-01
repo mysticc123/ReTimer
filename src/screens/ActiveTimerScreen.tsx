@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -9,9 +9,10 @@ import { useSettingsStore, useTimerStore } from '../store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { resolveTypeface } from '../theme';
 import { PressableScale } from '../components/PressableScale';
-import Animated from 'react-native-reanimated';
-import { getThemeColors, colors } from '../theme/colors';
-import { spacing, typography, borderRadius } from '../theme/colors';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { getThemeColors } from '../theme/colors';
+import { spacing, typography } from '../theme/colors';
+import { getActiveTimerDisplayTime } from '../utils/activeTimerDisplay';
 
 type RootStackParamList = {
   Landing: undefined;
@@ -41,8 +42,9 @@ export const ActiveTimerScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const isCountUp = timer.mode === 'countup';
   
-  const [displayTime, setDisplayTime] = useState<number>(timer.durationMs);
+  const [displayTime, setDisplayTime] = useState<number>(() => getActiveTimerDisplayTime(timer));
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const animationRef = useRef<number | null>(null);
   const lastUpdateRef = useRef<number>(Date.now());
@@ -153,20 +155,30 @@ export const ActiveTimerScreen: React.FC = () => {
   }, [timer.status, pauseTimer, settings.hapticsEnabled]);
 
   const handleTap = useCallback(() => {
-    if (isRunning) {
+    if (timer.status === 'running') {
       handlePause();
     } else {
       handleStart();
     }
-  }, [isRunning, handlePause, handleStart]);
+  }, [timer.status, handlePause, handleStart]);
 
-  const handleLongPress = useCallback(() => {
+  const handleReset = useCallback(() => {
     if (settings.hapticsEnabled) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     }
     resetTimer();
     setIsRunning(false);
   }, [resetTimer, settings.hapticsEnabled]);
+
+  const timerActionLabel = timer.status === 'completed'
+    ? 'Restart timer'
+    : timer.status === 'running'
+      ? 'Pause timer'
+      : timer.status === 'paused'
+        ? 'Resume timer'
+        : 'Start timer';
+
+  const purposeLabel = timer.label?.trim() || undefined;
 
   useEffect(() => {
     if (settings.keepScreenAwake && isRunning) {
@@ -193,26 +205,12 @@ export const ActiveTimerScreen: React.FC = () => {
   }, [isRunning, timer.mode, updateDisplayTime]);
 
   useEffect(() => {
-    if (timer.status === 'idle') {
-      setDisplayTime(timer.mode === 'countup' ? 0 : timer.durationMs);
-      setIsRunning(false);
-    } else if (timer.status === 'completed') {
-      setDisplayTime(timer.mode === 'countup' ? timer.elapsedTimeMs : 0);
-      setIsRunning(false);
-    } else if (timer.status === 'running') {
-      // Reset display time when timer starts running
-      lastUpdateRef.current = Date.now();
-      setIsRunning(true);
-    } else if (
-      timer.status === 'paused' &&
-      timer.elapsedTimeMs === 0 &&
-      !timer.targetTimestamp
-    ) {
-      // Staged manual phase (never started): show its full duration.
-      // Mid-phase pauses keep the frozen display (handled by RAF cleanup).
-      setDisplayTime(timer.durationMs);
-      setIsRunning(false);
-    }
+    // The store snapshot is authoritative on mount, remount, pause, resume,
+    // reset, and completion. Do not initialize from durationMs alone: a
+    // paused or running timer may already be part-way through its phase.
+    setDisplayTime(getActiveTimerDisplayTime(timer));
+    lastUpdateRef.current = Date.now();
+    setIsRunning(timer.status === 'running');
   }, [timer.status, timer.durationMs, timer.mode, timer.elapsedTimeMs, timer.targetTimestamp]);
 
   const timeString = formatTime(displayTime);
@@ -239,36 +237,7 @@ export const ActiveTimerScreen: React.FC = () => {
   return (
     <>
       <StatusBar style={settings.theme !== 'light' ? 'light' : 'dark'} hidden={settings.fullscreenMode || isLandscape} />
-
-<Pressable
-        onPress={handleTap}
-        onLongPress={handleLongPress}
-        accessibilityLabel={
-          isRunning
-            ? 'Pause timer'
-            : timer.status === 'completed'
-            ? 'Restart timer'
-            : 'Start timer'
-        }
-        accessibilityHint={
-          (() => {
-            let hint = timer.status === 'completed'
-              ? 'Tap to restart the same timer. Long press to reset.'
-              : 'Tap to pause or resume. Long press to reset.';
-            // Include phase/mode context for accessibility
-            if (timer.mode === 'pomodoro' && timer.pomodoroConfig) {
-              const phase = timer.isWorkPhase ? 'Focus' : timer.pomodoroFocusCount === 0 ? 'Long break' : 'Break';
-              hint = `${phase}. ${hint}`;
-            } else if (timer.mode === 'interval' && timer.intervalConfig) {
-              const phase = timer.isWorkPhase ? 'Work' : 'Rest';
-              hint = `${phase}, round ${timer.currentRound + 1} of ${timer.totalRounds}. ${hint}`;
-            } else if (timer.mode === 'countup') {
-              hint = `Counting up. ${hint}`;
-            }
-            return hint;
-          })()
-        }
-        accessibilityRole="button"
+      <View
         style={[
           styles.container,
           {
@@ -280,28 +249,53 @@ export const ActiveTimerScreen: React.FC = () => {
           },
         ]}
       >
-        <View style={styles.timerContainer}>
-          <Text
-            style={[
-              styles.timerText,
-              {
-                color: isRunning ? accentColor : themeColors.primaryText,
-                fontSize: fontSize,
-                fontFamily: resolveTypeface(settings.fontFamily, '700'),
-              },
-            ]}
-            allowFontScaling={false}
-          >
-            {timeString}
-          </Text>
-        </View>
+        <PressableScale
+          onPress={handleTap}
+          onLongPress={handleReset}
+          delayLongPress={3000}
+          androidRipple={null}
+          accessibilityLabel={timerActionLabel}
+          accessibilityHint="Tap to control the timer. Hold for 3 seconds to reset it."
+          accessibilityRole="button"
+          style={[styles.timerSurface, isCountUp && styles.countUpSurface]}
+        >
+          <View style={styles.timerContainer}>
+            {purposeLabel && <Text
+              style={[
+                styles.purposeLabel,
+                {
+                  color: themeColors.secondaryText,
+                  fontFamily: resolveTypeface(settings.fontFamily, '600'),
+                  ...(isCountUp ? styles.countUpPurposeLabel : null),
+                },
+              ]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {purposeLabel}
+            </Text>}
+            <Text
+              style={[
+                styles.timerText,
+                {
+                  color: isRunning ? accentColor : themeColors.primaryText,
+                  fontSize: fontSize,
+                  fontFamily: resolveTypeface(settings.fontFamily, '700'),
+                  ...(isCountUp ? styles.countUpTimerText : null),
+                },
+              ]}
+            >
+              {timeString}
+            </Text>
+          </View>
+        </PressableScale>
 
         {timer.intervalConfig && (
           <View
             style={
-              isLandscape
+                isLandscape
                 ? styles.landscapeRound
-                : [styles.roundIndicator, { bottom: 100 + insets.bottom }]
+                : [styles.roundIndicator, { bottom: 178 + insets.bottom }]
             }
           >
             <Text
@@ -318,38 +312,17 @@ export const ActiveTimerScreen: React.FC = () => {
           </View>
         )}
 
-        <PressableScale
+        {!isCountUp && <PressableScale
           onPress={() => navigation.goBack()}
-          style={
-            isLandscape
-              ? [
-                  styles.landscapeExit,
-                  {
-                    right: insets.right + spacing.md,
-                    bottom: insets.bottom + spacing.md,
-                  },
-                ]
-              : [
-                  styles.backButton,
-                  { backgroundColor: themeColors.surface, bottom: 50 + insets.bottom },
-                ]
-          }
-          accessibilityLabel="Go back"
+          style={isLandscape
+            ? [styles.landscapeExit, { right: insets.right + spacing.md, bottom: insets.bottom + spacing.md }]
+            : [styles.exitButton, { bottom: 24 + insets.bottom }]}
+          accessibilityLabel="Exit timer"
           accessibilityRole="button"
         >
-          <Text
-            style={[
-              styles.backButtonText,
-              {
-                color: themeColors.secondaryText,
-                fontFamily: resolveTypeface(settings.fontFamily, '500'),
-              },
-            ]}
-          >
-            ← Exit
-          </Text>
-        </PressableScale>
-      </Pressable>
+          <Ionicons name="arrow-back" size={24} color={themeColors.secondaryText} />
+        </PressableScale>}
+      </View>
     </>
   );
 };
@@ -365,15 +338,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  timerSurface: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  countUpSurface: {
+    paddingHorizontal: 0,
+    paddingVertical: spacing.xl,
+  },
   timerText: {
     fontWeight: typography.fontWeights.bold,
     letterSpacing: -2,
     fontVariant: ['tabular-nums'],
     textAlign: 'center',
   },
+  purposeLabel: {
+    marginBottom: spacing.sm,
+    letterSpacing: 1,
+    fontSize: typography.fontSizes.sm,
+  },
+  countUpPurposeLabel: {
+    marginBottom: spacing.md,
+    fontSize: typography.fontSizes.lg,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase' as const,
+  },
+  countUpTimerText: {
+    letterSpacing: -3,
+  },
   roundIndicator: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 178,
   },
   landscapeRound: {
     marginTop: spacing.sm,
@@ -381,20 +378,12 @@ const styles = StyleSheet.create({
   roundText: {
     fontSize: typography.fontSizes.sm,
   },
-  backButton: {
+  exitButton: {
     position: 'absolute',
-    bottom: 50,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.full,
+    bottom: 24,
   },
   landscapeExit: {
     position: 'absolute',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  backButtonText: {
-    fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.medium,
+    padding: spacing.sm,
   },
 });

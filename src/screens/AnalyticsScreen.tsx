@@ -4,10 +4,20 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme, resolveTypeface } from '../theme';
-import { useTimerStore, useSettingsStore } from '../store';
+import { useSettingsStore } from '../store';
+import { useAnalyticsStore } from '../store/analytics';
 import { PressableScale } from '../components/PressableScale';
 import { formatDurationShort } from '../utils/durationFormat';
-import { startOfDay, buildWeeklySummary, buildMonthlySummary, filterValidSessions } from '../utils/analytics';
+import {
+  addMonths,
+  addWeeks,
+  buildMonthlySummary,
+  buildWeeklySummary,
+  filterValidSessions,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
+} from '../utils/analytics';
 import { buildAnalyticsViewModel } from '../utils/analyticsViewModel';
 import { buildWeeklyChartData, buildMonthlyChartData, formatFocusedShort } from '../utils/analyticsChartData';
 import { CALENDAR_COLUMNS, computeCalendarCellSize } from '../utils/calendarLayout';
@@ -52,18 +62,28 @@ export const AnalyticsScreen: React.FC = () => {
   // aspectRatio collapses cells in a flex-wrap row). Same width is applied to
   // the weekday header so labels align with the date cells.
   const calendarCellSize = useMemo(
-    () =>
-      computeCalendarCellSize({
-        screenWidth: width,
-        contentPadding: spacing.lg,
+    () => {
+      const outerHorizontalPadding = isLandscape
+        ? Math.max(insets.left, spacing.md) + Math.max(insets.right, spacing.md)
+        : 0;
+      const columnWidth = isLandscape
+        ? (width - outerHorizontalPadding - spacing.lg * 2 - spacing.lg) / 2
+        : width;
+
+      return computeCalendarCellSize({
+        screenWidth: columnWidth,
+        contentPadding: isLandscape ? 0 : spacing.lg,
         containerBorderWidth: 1,
         gridPadding: spacing.sm,
         cellMargin: 1,
-      }),
-    [width]
+      });
+    },
+    [insets.left, insets.right, isLandscape, width]
   );
 
-  const sessions = useTimerStore((state) => state.sessions);
+  const sessions = useAnalyticsStore((state) => state.sessions);
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(Date.now()));
+  const [selectedMonthStart, setSelectedMonthStart] = useState(() => startOfMonth(Date.now()));
 
   // Local-calendar-day refresh token. Every displayed metric is
   // date-relative, so a screen mounted across midnight must recompute even
@@ -99,26 +119,48 @@ export const AnalyticsScreen: React.FC = () => {
     [sessions, dayKey, settings.dailyFocusGoalMs]
   );
 
-  // Compute full PeriodSummary objects for chart data
-  const weeklySummary = useMemo(
-    () => buildWeeklySummary(filterValidSessions(sessions), dayKey),
-    [sessions, dayKey]
+  const monthlySummary = useMemo(
+    () => buildMonthlySummary(filterValidSessions(sessions), selectedMonthStart),
+    [sessions, selectedMonthStart]
   );
 
-  const monthlySummary = useMemo(
-    () => buildMonthlySummary(filterValidSessions(sessions), dayKey),
-    [sessions, dayKey]
+  const selectedWeeklySummary = useMemo(
+    () => buildWeeklySummary(filterValidSessions(sessions), selectedWeekStart),
+    [sessions, selectedWeekStart]
   );
 
   const weeklyChartData = useMemo(
-    () => buildWeeklyChartData(weeklySummary, dayKey),
-    [weeklySummary, dayKey]
+    () => buildWeeklyChartData(selectedWeeklySummary, dayKey),
+    [selectedWeeklySummary, dayKey]
   );
 
   const monthlyChartData = useMemo(
     () => buildMonthlyChartData(monthlySummary, dayKey),
     [monthlySummary, dayKey]
   );
+
+  const formatWeekRange = (weekStart: number): string => {
+    const start = new Date(weekStart);
+    const end = new Date(addWeeks(weekStart, 1) - 1);
+    const startLabel = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const endLabel = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `${startLabel} – ${endLabel}`;
+  };
+
+  const formatMonth = (monthStart: number): string =>
+    new Date(monthStart).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const weekIntersectsMonth = (weekStart: number, monthStart: number): boolean => {
+    const monthEnd = addMonths(monthStart, 1);
+    return weekStart < monthEnd && addWeeks(weekStart, 1) > monthStart;
+  };
+
+  const selectMonth = (nextMonth: number) => {
+    setSelectedMonthStart(nextMonth);
+    if (!weekIntersectsMonth(selectedWeekStart, nextMonth)) {
+      setSelectedWeekStart(startOfWeek(nextMonth));
+    }
+  };
 
   const renderStat = ({ value, label }: StatProps) => (
     <View style={styles.stat} accessibilityLabel={`${label}, ${value}`}>
@@ -204,6 +246,7 @@ export const AnalyticsScreen: React.FC = () => {
         styles.container,
         {
           backgroundColor: colors.background,
+          paddingTop: Math.max(insets.top, spacing.lg),
           paddingBottom: insets.bottom,
           paddingLeft: isLandscape ? Math.max(insets.left, spacing.md) : undefined,
           paddingRight: isLandscape ? Math.max(insets.right, spacing.md) : undefined,
@@ -440,9 +483,13 @@ export const AnalyticsScreen: React.FC = () => {
           >
             {renderPeriodRow('Today', viewModel.today.focusedMs, viewModel.today.sessionCount, false)}
             {renderPeriodRow('This week', viewModel.week.focusedMs, viewModel.week.sessionCount, false)}
-            {renderPeriodRow('This month', viewModel.month.focusedMs, viewModel.month.sessionCount, true)}
+            {renderPeriodRow('This month', viewModel.month.focusedMs, viewModel.month.sessionCount, false)}
+            {renderPeriodRow('This year', viewModel.year.focusedMs, viewModel.year.sessionCount, false)}
+            {renderPeriodRow('Overall', viewModel.overall.focusedMs, viewModel.overall.sessionCount, true)}
           </View>
 
+          <View style={isLandscape ? styles.chartColumns : undefined}>
+            <View style={isLandscape ? styles.chartColumn : undefined}>
           {/* Weekly Focus Bars (P5) */}
           <Text
             style={[
@@ -459,9 +506,34 @@ export const AnalyticsScreen: React.FC = () => {
           <View
             style={[
               styles.chartCard,
+              isLandscape ? styles.landscapeChartCard : undefined,
               { backgroundColor: colors.surface, borderColor: colors.border },
             ]}
           >
+            <View style={styles.navigationHeader}>
+              <PressableScale
+                onPress={() => setSelectedWeekStart(addWeeks(selectedWeekStart, -1))}
+                accessibilityLabel="Previous week"
+                accessibilityRole="button"
+                style={styles.navigationButton}
+              >
+                <Text style={[styles.navigationArrow, { color: colors.secondaryText }]}>‹</Text>
+              </PressableScale>
+              <Text
+                style={[styles.navigationLabel, { color: colors.primaryText, fontFamily: resolveTypeface(fontFamily, '500') }]}
+                accessibilityLabel={`Selected week, ${formatWeekRange(selectedWeekStart)}`}
+              >
+                {formatWeekRange(selectedWeekStart)}
+              </Text>
+              <PressableScale
+                onPress={() => setSelectedWeekStart(addWeeks(selectedWeekStart, 1))}
+                accessibilityLabel="Next week"
+                accessibilityRole="button"
+                style={styles.navigationButton}
+              >
+                <Text style={[styles.navigationArrow, { color: colors.secondaryText }]}>›</Text>
+              </PressableScale>
+            </View>
             <View style={styles.weekChart}>
               {weeklyChartData.map((day) => (
                 <View
@@ -471,7 +543,7 @@ export const AnalyticsScreen: React.FC = () => {
                     { backgroundColor: colors.surface },
                   ]}
                   accessibilityLabel={`${day.label}: ${formatFocusedShort(day.focusedMs)} focused, ${day.sessionCount} ${day.sessionCount === 1 ? 'session' : 'sessions'}`}
-                  accessibilityRole="button"
+                  accessibilityRole="text"
                 >
                   <View
                     style={[
@@ -512,6 +584,9 @@ export const AnalyticsScreen: React.FC = () => {
             </View>
           </View>
 
+            </View>
+
+            <View style={isLandscape ? styles.chartColumn : undefined}>
           {/* Monthly Calendar (P5) */}
           <Text
             style={[
@@ -528,9 +603,34 @@ export const AnalyticsScreen: React.FC = () => {
           <View
             style={[
               styles.chartCard,
+              isLandscape ? styles.landscapeChartCard : undefined,
               { backgroundColor: colors.surface, borderColor: colors.border },
             ]}
           >
+            <View style={styles.navigationHeader}>
+                <PressableScale
+                  onPress={() => selectMonth(addMonths(selectedMonthStart, -1))}
+                  accessibilityLabel="Previous month"
+                  accessibilityRole="button"
+                  style={styles.navigationButton}
+                >
+                  <Text style={[styles.navigationArrow, { color: colors.secondaryText }]}>‹</Text>
+                </PressableScale>
+                <Text
+                  style={[styles.navigationLabel, { color: colors.primaryText, fontFamily: resolveTypeface(fontFamily, '500') }]}
+                  accessibilityLabel={`Selected month, ${formatMonth(selectedMonthStart)}`}
+                >
+                  {formatMonth(selectedMonthStart)}
+                </Text>
+                <PressableScale
+                  onPress={() => selectMonth(addMonths(selectedMonthStart, 1))}
+                  accessibilityLabel="Next month"
+                  accessibilityRole="button"
+                  style={styles.navigationButton}
+                >
+                <Text style={[styles.navigationArrow, { color: colors.secondaryText }]}>›</Text>
+                </PressableScale>
+            </View>
             <View style={[styles.monthHeader, { borderBottomColor: colors.border }]}>
               {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => (
                 <Text
@@ -551,11 +651,11 @@ export const AnalyticsScreen: React.FC = () => {
             </View>
             <View style={styles.monthGrid}>
               {monthlyChartData.map((day) => (
-                <PressableScale
+                <View
                   key={`${day.date.getFullYear()}-${day.date.getMonth()}-${day.day}`}
-                  onPress={() => {}}
+                  accessible
                   accessibilityLabel={`${day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}: ${formatFocusedShort(day.focusedMs)} focused, ${day.sessionCount} ${day.sessionCount === 1 ? 'session' : 'sessions'}`}
-                  accessibilityRole="button"
+                  accessibilityRole="text"
                   style={[
                     styles.monthCell,
                     {
@@ -565,7 +665,6 @@ export const AnalyticsScreen: React.FC = () => {
                       borderColor: day.inCurrentMonth ? colors.border : 'transparent',
                     },
                   ]}
-                  disabled={!day.inCurrentMonth}
                 >
                   <Text
                     style={[
@@ -596,8 +695,11 @@ export const AnalyticsScreen: React.FC = () => {
                       ]}
                     />
                   )}
-                </PressableScale>
+                </View>
               ))}
+            </View>
+          </View>
+
             </View>
           </View>
 
@@ -623,7 +725,6 @@ export const AnalyticsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 50,
   },
   header: {
     flexDirection: 'row',
@@ -647,6 +748,15 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
+  },
+  chartColumns: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: spacing.lg,
+  },
+  chartColumn: {
+    flex: 1,
+    minWidth: 0,
   },
   overviewCard: {
     borderWidth: 1,
@@ -738,6 +848,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: spacing.md,
   },
+  landscapeChartCard: {
+    flex: 1,
+  },
   weekChart: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -768,6 +881,28 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     borderBottomWidth: 1,
+  },
+  navigationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 48,
+    paddingHorizontal: spacing.sm,
+  },
+  navigationButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navigationArrow: {
+    fontSize: typography.fontSizes.xl,
+    opacity: 0.8,
+  },
+  navigationLabel: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: typography.fontSizes.md,
   },
   monthDayHeader: {
     textAlign: 'center',

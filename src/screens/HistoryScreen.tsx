@@ -67,6 +67,9 @@ function sessionTitle(session: FocusSession): string {
   if (session.mode === 'pomodoro') {
     return `Focus • ${duration}`;
   }
+  if (session.mode === 'countup') {
+    return `Count-Up • ${duration}`;
+  }
   return `Countdown • ${duration}`;
 }
 
@@ -92,7 +95,6 @@ export const HistoryScreen: React.FC = () => {
   // Narrow selectors: re-render only when history or relevant settings change.
   const sessions = useTimerStore((state) => state.sessions);
   const clearSessionHistory = useTimerStore((state) => state.clearSessionHistory);
-  const reducedMotion = useSettingsStore((state) => state.settings.reducedMotion);
   const hapticsEnabled = useSettingsStore((state) => state.settings.hapticsEnabled);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -207,6 +209,7 @@ export const HistoryScreen: React.FC = () => {
         styles.container,
         {
           backgroundColor: colors.background,
+          paddingTop: Math.max(insets.top, spacing.lg),
           paddingBottom: insets.bottom,
           paddingLeft: isLandscape ? Math.max(insets.left, spacing.md) : undefined,
           paddingRight: isLandscape ? Math.max(insets.right, spacing.md) : undefined,
@@ -446,8 +449,8 @@ export const HistoryScreen: React.FC = () => {
         accessibilityViewIsModal
       >
         <Animated.View
-          entering={reducedMotion ? undefined : FadeIn.duration(150)}
-          exiting={reducedMotion ? undefined : FadeOut.duration(150)}
+          entering={FadeIn.duration(120)}
+          exiting={FadeOut.duration(120)}
           style={styles.backdrop}
         >
           <Pressable
@@ -457,8 +460,8 @@ export const HistoryScreen: React.FC = () => {
             accessibilityRole="button"
           />
           <Animated.View
-            entering={reducedMotion ? undefined : FadeIn.duration(150)}
-            exiting={reducedMotion ? undefined : FadeOut.duration(150)}
+            entering={FadeIn.duration(120)}
+            exiting={FadeOut.duration(120)}
             style={[
               styles.confirmCard,
               { backgroundColor: colors.surface, borderColor: colors.border },
@@ -538,7 +541,6 @@ export const HistoryScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 50,
   },
   header: {
     flexDirection: 'row',

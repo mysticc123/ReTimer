@@ -5,7 +5,7 @@
 
 export interface FocusSession {
   id: string;
-  mode: 'pomodoro' | 'countdown' | 'interval';
+  mode: 'pomodoro' | 'countdown' | 'countup' | 'interval';
   phase: 'focus' | 'work' | 'single';
   round?: number;
   totalRounds?: number;
@@ -50,6 +50,8 @@ export interface AnalyticsModule {
   buildDailySummaries(sessions: FocusSession[]): DailySummary[];
   buildWeeklySummary(sessions: FocusSession[], referenceTimestamp: number): PeriodSummary;
   buildMonthlySummary(sessions: FocusSession[], referenceTimestamp: number): PeriodSummary;
+  buildYearSummary(sessions: FocusSession[], referenceTimestamp: number): PeriodSummary;
+  buildOverallSummary(sessions: FocusSession[], referenceTimestamp?: number): PeriodSummary;
   computeStreakInfo(sessions: FocusSession[], now?: number): StreakInfo;
   groupSessionsByDay(sessions: FocusSession[]): Map<number, FocusSession[]>;
   setNowFn(fn?: () => number): void;

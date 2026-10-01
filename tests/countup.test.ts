@@ -4,7 +4,7 @@
  * The stopwatch anchors `targetTimestamp` in the past and derives elapsed
  * as `now - targetTimestamp` (see ActiveTimerScreen). The store guarantees:
  * pause freezes, resume re-anchors losslessly, restore never touches a
- * running Count-Up, and no path ever records Count-Up history.
+ * running Count-Up and completed Count-Up history.
  */
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
@@ -106,13 +106,37 @@ describe('count-up stopwatch', () => {
     assert.equal(app.useTimerStore.getState().timer.status, 'running');
   });
 
-  it('a forced completeTimer on count-up still records nothing', () => {
+  it('completion records the live elapsed duration exactly once', () => {
     const api = app.useTimerStore.getState();
     api.initializeTimer('countup', 0);
     api.startTimer();
+    clock.advance(37_000);
     api.completeTimer();
     const state = app.useTimerStore.getState();
     assert.equal(state.timer.status, 'completed');
-    assert.equal(state.sessions.length, 0);
+    assert.equal(state.timer.elapsedTimeMs, 37_000);
+    assert.equal(state.sessions.length, 1);
+    assert.equal(state.sessions[0].mode, 'countup');
+    assert.equal(state.sessions[0].plannedDurationMs, 0);
+    assert.equal(state.sessions[0].actualDurationMs, 37_000);
+    assert.equal(state.sessions[0].startedAtMs, T0);
+    assert.equal(state.sessions[0].completedAtMs, T0 + 37_000);
+    api.completeTimer();
+    assert.equal(app.useTimerStore.getState().sessions.length, 1);
+  });
+
+  it('pause/resume completion stores focused elapsed time, excluding the pause', () => {
+    const api = app.useTimerStore.getState();
+    api.initializeTimer('countup', 0);
+    api.startTimer();
+    clock.advance(20_000);
+    api.pauseTimer();
+    clock.advance(50_000);
+    api.resumeTimer();
+    clock.advance(10_000);
+    api.completeTimer();
+    const state = app.useTimerStore.getState();
+    assert.equal(state.sessions.length, 1);
+    assert.equal(state.sessions[0].actualDurationMs, 30_000);
   });
 });

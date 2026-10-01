@@ -49,7 +49,6 @@ describe('settings schema hygiene', () => {
     assert.equal(settings['hapticsEnabled'], true);
     assert.equal(settings['keepScreenAwake'], true);
     assert.equal(settings['fullscreenMode'], true);
-    assert.equal(settings['reducedMotion'], false);
     assert.equal(settings['notificationsAsked'], false);
     assert.equal(settings['autoStartNextInterval'], false);
     // Reserved (dormant) fields retained for future Phase 3 features.
@@ -59,6 +58,9 @@ describe('settings schema hygiene', () => {
       30 * 60 * 1000,
       45 * 60 * 1000,
       60 * 60 * 1000,
+      2 * 60 * 60 * 1000,
+      3 * 60 * 60 * 1000,
+      4 * 60 * 60 * 1000,
     ]);
     assert.equal(settings['timerCompletionBehavior'], 'stop');
     assert.equal(settings['soundEnabled'], true);
@@ -143,7 +145,6 @@ describe('settings schema hygiene', () => {
     assert.equal(parsed.state?.settings?.['hapticsEnabled'], false);
     assert.equal(parsed.state?.settings?.['keepScreenAwake'], true);
     assert.equal(parsed.state?.settings?.['fullscreenMode'], true);
-    assert.equal(parsed.state?.settings?.['reducedMotion'], false);
   });
 
   it('stale persisted bytes missing newer keys rehydrate with default values (no undefined/0s)', async () => {
@@ -160,7 +161,7 @@ describe('settings schema hygiene', () => {
       hapticsEnabled: true,
       keepScreenAwake: true,
       fullscreenMode: true,
-      reducedMotion: false,
+      reducedMotion: true,
       notificationsAsked: true,
     };
     mmkvMock()
@@ -180,6 +181,7 @@ describe('settings schema hygiene', () => {
     assert.equal(settings['accentColor'], '#0066FF');
     assert.equal(settings['pomodoroFocusMs'], 30 * 60 * 1000);
     assert.equal(settings['notificationsAsked'], true);
+    assert.ok(!('reducedMotion' in settings));
   });
 
   it('every displayed numeric setting is a defined, finite number', async () => {

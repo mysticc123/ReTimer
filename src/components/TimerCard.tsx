@@ -1,8 +1,7 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import React from 'react';
 import { useTheme, resolveTypeface } from '../theme';
-import { PressableScale } from './PressableScale';
-import { spacing, borderRadius, typography, getContrastText } from '../theme/colors';
+import { spacing, borderRadius, typography } from '../theme/colors';
 
 interface TimerCardProps {
   mode: string;
@@ -25,10 +24,10 @@ export const TimerCard: React.FC<TimerCardProps> = ({
   onPress,
   accessibilityLabel,
 }) => {
-  const { colors, accentColor, isDark, fontFamily } = useTheme();
+  const { colors, accentColor, fontFamily } = useTheme();
 
   return (
-    <PressableScale
+    <Pressable
       onPress={onPress}
       accessibilityLabel={accessibilityLabel || `${mode} timer`}
       accessibilityRole="button"
@@ -36,8 +35,9 @@ export const TimerCard: React.FC<TimerCardProps> = ({
       style={[
         styles.container,
         {
-          backgroundColor: isSelected ? accentColor : colors.surface,
-          borderColor: colors.border,
+          backgroundColor: colors.surface,
+          borderColor: isSelected ? accentColor : colors.border,
+          borderWidth: isSelected ? 1.5 : 1,
         },
       ]}
     >
@@ -49,9 +49,7 @@ export const TimerCard: React.FC<TimerCardProps> = ({
             style={[
               styles.title,
               {
-                color: isSelected
-                  ? getContrastText(accentColor)
-                  : colors.primaryText,
+                color: isSelected ? accentColor : colors.primaryText,
                 fontFamily: resolveTypeface(fontFamily, '600'),
               },
             ]}
@@ -64,9 +62,7 @@ export const TimerCard: React.FC<TimerCardProps> = ({
               style={[
                 styles.subtitle,
                 {
-                  color: isSelected
-                    ? getContrastText(accentColor)
-                    : colors.secondaryText,
+                  color: colors.secondaryText,
                   fontFamily: resolveTypeface(fontFamily, '400'),
                 },
               ]}
@@ -78,7 +74,7 @@ export const TimerCard: React.FC<TimerCardProps> = ({
           )}
         </View>
       </View>
-    </PressableScale>
+    </Pressable>
   );
 };
 

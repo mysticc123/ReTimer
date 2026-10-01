@@ -11,6 +11,7 @@
 
 import { createRequire } from 'node:module';
 import type * as StoreModule from '../../src/store/index.js';
+import type * as AnalyticsStoreModule from '../../src/store/analytics.js';
 import type * as NotificationsModule from '../../src/services/notifications.js';
 import type * as CompletionSoundModule from '../../src/services/completionSound.js';
 import type * as MmkvMock from './mmkv-mock.js';
@@ -21,6 +22,7 @@ const req = createRequire(process.cwd() + '/package.json');
 
 const BUILD = process.cwd() + '/.test-build';
 const STORE_PATH = BUILD + '/src/store/index.js';
+const ANALYTICS_STORE_PATH = BUILD + '/src/store/analytics.js';
 const NOTIFICATIONS_PATH = BUILD + '/src/services/notifications.js';
 const COMPLETION_SOUND_PATH = BUILD + '/src/services/completionSound.js';
 const MMKV_MOCK_PATH = BUILD + '/tests/helpers/mmkv-mock.js';
@@ -31,6 +33,7 @@ export interface StoreHandles {
   useTimerStore: typeof StoreModule.useTimerStore;
   useSettingsStore: typeof StoreModule.useSettingsStore;
   restoreTimerState: typeof StoreModule.restoreTimerState;
+  useAnalyticsStore: typeof AnalyticsStoreModule.useAnalyticsStore;
 }
 
 export interface LoadedApp extends StoreHandles {
@@ -73,6 +76,7 @@ export function rnMock(): typeof RnMock {
 async function rehydrate(handles: StoreHandles): Promise<void> {
   await handles.useTimerStore.persist.rehydrate();
   await handles.useSettingsStore.persist.rehydrate();
+  await handles.useAnalyticsStore.persist.rehydrate();
 }
 
 /**
@@ -83,12 +87,14 @@ export async function loadStores(): Promise<LoadedApp> {
   bustSrcCache();
   resetMocks();
   const store = req(STORE_PATH) as typeof StoreModule;
+  const analyticsStore = req(ANALYTICS_STORE_PATH) as typeof AnalyticsStoreModule;
   const notifications = req(NOTIFICATIONS_PATH) as typeof NotificationsModule;
   const completionSound = req(COMPLETION_SOUND_PATH) as typeof CompletionSoundModule;
   const handles: LoadedApp = {
     useTimerStore: store.useTimerStore,
     useSettingsStore: store.useSettingsStore,
     restoreTimerState: store.restoreTimerState,
+    useAnalyticsStore: analyticsStore.useAnalyticsStore,
     notifications,
     completionSound,
   };
@@ -106,12 +112,14 @@ export async function relaunch(): Promise<LoadedApp> {
   bustSrcCache();
   resetExpoLog();
   const store = req(STORE_PATH) as typeof StoreModule;
+  const analyticsStore = req(ANALYTICS_STORE_PATH) as typeof AnalyticsStoreModule;
   const notifications = req(NOTIFICATIONS_PATH) as typeof NotificationsModule;
   const completionSound = req(COMPLETION_SOUND_PATH) as typeof CompletionSoundModule;
   const handles: LoadedApp = {
     useTimerStore: store.useTimerStore,
     useSettingsStore: store.useSettingsStore,
     restoreTimerState: store.restoreTimerState,
+    useAnalyticsStore: analyticsStore.useAnalyticsStore,
     notifications,
     completionSound,
   };

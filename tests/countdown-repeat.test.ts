@@ -491,6 +491,7 @@ describe('P9 Countdown Repeat', () => {
     api.startTimer();
     api.completeTimer();
     const state = app.useTimerStore.getState();
-    assert.equal(state.sessions.length, 0);
+    assert.equal(state.sessions.length, 1);
+    assert.equal(state.sessions[0].mode, 'countup');
   });
 });

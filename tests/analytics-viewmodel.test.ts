@@ -136,7 +136,7 @@ describe('analytics view model (Analytics screen wiring)', () => {
     clock.advance(5_000);
     api.completeTimer();
 
-    const sessions = app.useTimerStore.getState().sessions;
+    const sessions = app.useAnalyticsStore.getState().sessions;
     const model = viewModel.buildAnalyticsViewModel(sessions, Date.now());
     assert.equal(model.hasData, true);
     assert.equal(model.today.sessionCount, 1);

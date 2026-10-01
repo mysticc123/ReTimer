@@ -1,0 +1,35 @@
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
+import { setCompletionSoundPlayer, type CompletionSoundId } from './completionSound';
+
+// Short bundled PCM tones keep completion feedback local and available offline.
+// They are data URIs so this feature does not require native project regeneration
+// or a separate asset pipeline.
+const TONE_DATA: Record<CompletionSoundId, string> = {
+  'gentle-chime': 'UklGRqQCAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YYACAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgHtJMTxnncbPs4BNMTpjmcTPt4VRMzhelMHQuopVNDZZj77Qvo9ZNjRVirrQwZReODNRhbfPxJljOjFNgLPPxp1nPDFJe6/NyKJsPzBGdqvMyqdxQjBCcafKzKt2RjA/bKLIza97STE8Z53Gz7OATTE6Y5nEz7eFUTM4XpTB0LqKVTQ2WY++0L6PWTY0VYq60MGUXjgzUYW3z8SZYzoxTYCzz8adZzwxSXuvzciibD8wRnarzMqncUIwQnGnysyrdkYwP2yiyM2ve0kxPGedxs+zgE0xOmOZxM+3hVEzOF6UwdC6ilU0NlmPvtC+j1k2NFWKutDBlF44M1GFt8/EmWM6MU2As8/GnWc8MUl7r83Iomw/MEZ2q8zKp3FCMEJxp8rMq3ZGMD9sosjNr3tJMTxnncbPs4BNMTpjmcTPt4VRMzhelMHQuopVNDZZj77Qvo9ZNjRVirrQwZReODNRhbfPxJljOjFNgLPPxp1nPDFJe6/NyKJsPzBGdqvMyqdxQjBCcafKzKt2RjA/bKLIza97STE8Z53Gz7OATTE6Y5nEz7eFUTM4XpTB0LqKVTQ2WY++0L6PWTY0VYq60MGUXjgzUYW3z8SZYzoxTYCzz8adZzwxSXuvzciibD8wRnarzMqncUIwQnGnysyrdkYwP2yiyM2ve0kxPGedxs+zgE0xOmOZxM+3hYCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA',
+  'digital-beep': 'UklGRqQCAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YYACAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgLaRaEYyM0hslbnNzbmWbUk0MkVnkLXMz72bck01MUJji7HKz8Cgd1E3MD9ehq3I0MOkfFU5MDxZganF0MWpgVk8MDlVfKTD0Mithl4/MDdRd6DAz8qxi2NCMTVNcpu9z8y1kGdFMjRJbZa5zc25lWxIMzJGaJG2zM68mnFMNTFCZI2yys+/n3ZQNzA/X4iuyNDCo3tUOTA8W4OqxtDFqIBYOzA6Vn2lxNDHrIVdPjA4UnihwdDJsIphQTE2TnOcvs/LtI9mRDI0Sm+Yus7NuJRrRzMzR2qTt8zOu5lwSzQxQ2WOs8vPvp11TzYxQGCJr8nQwaJ6UzgwPVyEq8fQxKd/VzswO1d/p8TQx6uEXD0wOFN6osHQya+JYEAxNk91nb7Py7OOZUMxNEtwmbvOzLeTakczM0drlLjNzrqYb0o0MkRmj7TLz76cc042MUFhirDJ0MGheFI4MD5dhazH0MSlfVY6MDtYgKjF0Maqg1s8MDlUe6PC0MiuiF8/MDdQdp+/z8qyjWRCMTVMcZq8zsy2kWhGMjNIbJW5zc25lm1JNDJFZ5C1zM+9m3JNNTFCY4uxys/AoHdRNzA/XoatyNDDpHxVOTA8WYGpxdDFqYFZPDA5VXykw9DIrYZePzA3UXegwM/KsYtjQjE1TXKbvc/MtZBnRTI0SW2Wuc3NuZVsSDMyRmiRtoCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA',
+  'soft-gong': 'UklGRqQCAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YYACAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgLnCyc3Q0M3IwbmuopWIemxfU0g/ODMwMDI3PUZQXGh2hJGfq7a/x8zP0M7KxLyyp5qNf3FkV0xCOzUxMDE1O0JMV2Rxf42ap7K8xMrO0M/Mx7+2q5+RhHZoXFBGPTcyMDAzOD9IU19seoiVoq65wcjN0NDNycK5r6OWiXttYFRJQDk0MTAyNjxFT1tndYOQnaq1vsbMz9DPy8W9s6ibjoByZVhNQzs1MTAxNDpCS1ZjcH2LmaWxu8TKztDPzMfAt6ygk4V3al1RRz43MzAwMzg/R1Jea3iGlKGtuMHIzdDQzsnDurCkmIp8b2FVSkE5NDEwMjY8RE5ZZnOBj5yptL7Fy8/Qz8vFvrSpnI+Bc2ZZTkQ8NjIwMTQ5QUpVYW98ipiksLrDyc7Q0M3IwbitoZSGeGteUkc/ODMwMDM3PkdRXWp3hZOgrLfAx8zP0M7KxLuxpZmLfXBjVktCOjQxMDE1O0NNWGVygI6bqLO9xcvP0M/Mxr61qp2Qg3VnW09FPDYyMDE0OUBJVGBte4mWo6+5wsnN0NDNyMG5rqKViHpsX1NIPzgzMDAyNz1GUFxodoSRn6u2v8fMz9DOysS8sqeajX9xZFdMQjs1MTAxNTtCTFdkcX+NmqeyvMTKztDPzMe/tqufkYR2aFxQRj03MjAwMzg/SFNfbHqIlaKuucHIzdDQzcnCuYCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA',
+};
+
+let players: Partial<Record<CompletionSoundId, AudioPlayer>> = {};
+let initialized = false;
+
+function sourceFor(id: CompletionSoundId): string {
+  return `data:audio/wav;base64,${TONE_DATA[id]}`;
+}
+
+function play(sound: CompletionSoundId): void {
+  try {
+    const player = players[sound] ?? (players[sound] = createAudioPlayer(sourceFor(sound)));
+    void player.seekTo(0);
+    player.play();
+  } catch {
+    // Audio is enhancement-only; unavailable audio must not affect timer state.
+  }
+}
+
+export function initializeCompletionSound(): void {
+  if (initialized) return;
+  initialized = true;
+  setCompletionSoundPlayer(play);
+  void setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'mixWithOthers' }).catch(() => {});
+}

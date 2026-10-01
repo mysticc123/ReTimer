@@ -4,7 +4,7 @@
  * Uses the REAL `completeTimer()` / `nextRound()` / `nextPomodoroPhase()`
  * paths — never a reimplementation. Focus-equivalent phases (countdown
  * single, pomodoro focus, interval work) record exactly one session each;
- * rests, breaks, pauses, resets, and count-ups record nothing, and neither
+ * rests, breaks, pauses, and resets record nothing, and neither
  * duplicate calls nor lifecycle restores can add a second record.
  */
 
@@ -80,15 +80,28 @@ describe('history exactly-once', () => {
     assert.equal(sessions.length, 1);
   });
 
-  it('count-up, pause, reset, and clear record nothing', () => {
+  it('completed count-up records actual elapsed time while reset/clear abandon it', () => {
     const api = app.useTimerStore.getState();
+    api.initializeTimer('countup', 0);
+    api.startTimer();
+    clock.advance(30_000);
+    api.pauseTimer();
+    api.resumeTimer();
+    clock.advance(5_000);
+    api.completeTimer();
+    let sessions = app.useTimerStore.getState().sessions;
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].mode, 'countup');
+    assert.equal(sessions[0].actualDurationMs, 35_000);
+
     api.initializeTimer('countup', 0);
     api.startTimer();
     clock.advance(30_000);
     api.pauseTimer();
     api.resetTimer();
     api.clearTimer();
-    assert.equal(app.useTimerStore.getState().sessions.length, 0);
+    sessions = app.useTimerStore.getState().sessions;
+    assert.equal(sessions.length, 1);
   });
 
   it('abandoning a paused run records nothing', () => {

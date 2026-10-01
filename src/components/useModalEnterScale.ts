@@ -12,19 +12,19 @@ import { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reani
  *
  * Exit scale is intentionally omitted: React Native Modal unmount timing
  * makes exit transforms unreliable, and the existing FadeOut already covers
- * dismissal. Honors reducedMotion by holding scale at 1.0.
+ * dismissal.
  */
-export function useModalEnterScale(active: boolean, reduceMotion: boolean) {
+export function useModalEnterScale(active: boolean, enabled = true) {
   const scale = useSharedValue(1);
 
   useEffect(() => {
-    if (!reduceMotion && active) {
+    if (active && enabled) {
       scale.value = 0.9;
       scale.value = withSpring(1, { damping: 14, stiffness: 240 });
     } else {
       scale.value = 1;
     }
-  }, [active, reduceMotion, scale]);
+  }, [active, enabled, scale]);
 
   return useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],

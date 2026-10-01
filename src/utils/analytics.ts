@@ -45,6 +45,38 @@ export function startOfMonth(timestamp: number): number {
   return date.getTime();
 }
 
+/** Returns local midnight for January 1 of the containing year. */
+export function startOfYear(timestamp: number): number {
+  const date = new Date(timestamp);
+  date.setMonth(0, 1);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+/** Returns local midnight for January 1 of the following year. */
+export function startOfNextYear(timestamp: number): number {
+  const date = new Date(timestamp);
+  date.setFullYear(date.getFullYear() + 1, 0, 1);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+/** Move by whole calendar weeks while preserving the Monday week boundary. */
+export function addWeeks(weekStart: number, amount: number): number {
+  const date = new Date(startOfWeek(weekStart));
+  date.setDate(date.getDate() + amount * 7);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+/** Move by whole calendar months while preserving the first-of-month boundary. */
+export function addMonths(monthStart: number, amount: number): number {
+  const date = new Date(startOfMonth(monthStart));
+  date.setMonth(date.getMonth() + amount, 1);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
 /**
  * Returns the local midnight timestamp for the first day of the next month.
  */
@@ -140,6 +172,63 @@ export interface PeriodSummary {
   sessionCount: number;
   /** Daily breakdown for the period. */
   dailySummaries: DailySummary[];
+}
+
+/** Build a local-calendar summary for an explicit half-open date range. */
+export function buildPeriodSummary(
+  sessions: FocusSession[],
+  periodStart: number,
+  periodEnd: number
+): PeriodSummary {
+  const dailySummaries: DailySummary[] = [];
+  const cursor = new Date(periodStart);
+  cursor.setHours(0, 0, 0, 0);
+
+  while (cursor.getTime() < periodEnd) {
+    const dayStart = cursor.getTime();
+    const summary = buildDailySummary(sessions, dayStart);
+    if (summary) dailySummaries.push(summary);
+    cursor.setDate(cursor.getDate() + 1);
+    cursor.setHours(0, 0, 0, 0);
+  }
+
+  return {
+    periodStart,
+    periodEnd,
+    focusedMs: dailySummaries.reduce((total, day) => total + day.focusedMs, 0),
+    sessionCount: dailySummaries.reduce((total, day) => total + day.sessionCount, 0),
+    dailySummaries,
+  };
+}
+
+/** Build the current calendar year's year-to-date summary. */
+export function buildYearSummary(
+  sessions: FocusSession[],
+  referenceTimestamp: number
+): PeriodSummary {
+  return buildPeriodSummary(
+    sessions,
+    startOfYear(referenceTimestamp),
+    startOfDay(referenceTimestamp) + MS_PER_DAY
+  );
+}
+
+/** Build a summary covering every valid recorded session, excluding future data. */
+export function buildOverallSummary(
+  sessions: FocusSession[],
+  referenceTimestamp: number = Date.now()
+): PeriodSummary {
+  const valid = filterValidSessions(sessions).filter(
+    (session) => session.completedAtMs <= referenceTimestamp
+  );
+  if (valid.length === 0) {
+    const day = startOfDay(referenceTimestamp);
+    return buildPeriodSummary([], day, day + MS_PER_DAY);
+  }
+
+  const firstDay = Math.min(...valid.map((session) => startOfDay(session.completedAtMs)));
+  const lastDay = Math.max(...valid.map((session) => startOfDay(session.completedAtMs)));
+  return buildPeriodSummary(sessions, firstDay, lastDay + MS_PER_DAY);
 }
 
 /**

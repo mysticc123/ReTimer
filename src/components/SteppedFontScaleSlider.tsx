@@ -8,7 +8,6 @@ import Animated, {
   interpolateColor,
 } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
-import { useSettingsStore } from '../store';
 import { useTheme, resolveTypeface } from '../theme';
 import { spacing, typography, borderRadius } from '../theme/colors';
 import { FONT_SCALES } from '../utils/fontScale';
@@ -18,6 +17,8 @@ interface SteppedFontScaleSliderProps {
   value: number;
   /** Called with the exact snapped step value (always a FONT_SCALES member). */
   onChange: (value: number) => void;
+  /** Render without the standalone pill treatment when embedded in a row. */
+  compact?: boolean;
 }
 
 const DOT_SIZE = 8;
@@ -62,7 +63,6 @@ const StepDot: React.FC<StepDotProps> = ({
         [inactiveColor, activeColor]
       ),
       opacity: 0.35 + 0.65 * closeness,
-      transform: [{ scale: 1 + 0.25 * closeness }],
     };
   });
 
@@ -82,10 +82,9 @@ const StepDot: React.FC<StepDotProps> = ({
 export const SteppedFontScaleSlider: React.FC<SteppedFontScaleSliderProps> = ({
   value,
   onChange,
+  compact = false,
 }) => {
   const { colors, accentColor, fontFamily } = useTheme();
-  const reduceMotion = useSettingsStore((state) => state.settings.reducedMotion);
-
   const steps = useMemo(() => [...FONT_SCALES], []);
   const count = steps.length;
 
@@ -130,9 +129,9 @@ export const SteppedFontScaleSlider: React.FC<SteppedFontScaleSliderProps> = ({
 
   const snapToIndex = (index: number, animated: boolean) => {
     const target = posForIndex(index);
-    if (animated && !reduceMotion) {
+    if (animated) {
       snappingRef.current = true;
-      thumbX.value = withTiming(target, { duration: 140 }, (finished) => {
+      thumbX.value = withTiming(target, { duration: 110 }, (finished) => {
         if (finished) runOnJS(endSnap)();
       });
     } else {
@@ -182,7 +181,7 @@ export const SteppedFontScaleSlider: React.FC<SteppedFontScaleSliderProps> = ({
         },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [trackWidth, travel, reduceMotion, onChange]
+    [trackWidth, travel, onChange]
   );
 
   const thumbStyle = useAnimatedStyle(() => ({
@@ -195,7 +194,14 @@ export const SteppedFontScaleSlider: React.FC<SteppedFontScaleSliderProps> = ({
 
   return (
     <View
-      style={[styles.pill, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
+      style={[
+        styles.pill,
+        compact && styles.compactPill,
+        {
+          backgroundColor: compact ? 'transparent' : colors.surfaceElevated,
+          borderColor: colors.border,
+        },
+      ]}
       accessibilityLabel="Text size"
       accessibilityRole="adjustable"
       accessibilityValue={{
@@ -283,7 +289,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
+    paddingVertical: 0,
+  },
+  compactPill: {
+    width: 190,
+    borderWidth: 0,
+    paddingHorizontal: 0,
   },
   anchorSmall: {
     fontSize: typography.fontSizes.xs,

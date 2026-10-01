@@ -3,7 +3,8 @@
  *
  * Covers the Countdown preset quick-select feature using the existing
  * persisted `countdownPresetsMs` field. The presets are a fixed built-in
- * list (not user-editable) with default values: 5min, 15min, 30min, 45min, 60min.
+ * list (not user-editable) with default values: 5min, 15min, 30min, 45min,
+ * 60min, 2h, 3h, and 4h.
  */
 
 import { describe, it, beforeEach } from 'node:test';
@@ -21,10 +22,13 @@ const DEFAULT_PRESETS_MS = [
   30 * 60 * 1000,
   45 * 60 * 1000,
   60 * 60 * 1000,
+  2 * 60 * 60 * 1000,
+  3 * 60 * 60 * 1000,
+  4 * 60 * 60 * 1000,
 ];
 
 const COUNTDOWN_MIN_MS = 1000;
-const COUNTDOWN_MAX_MS = 120 * 60 * 1000;
+const COUNTDOWN_MAX_MS = 4 * 60 * 60 * 1000;
 
 describe('P3 Countdown Presets', () => {
   let app: LoadedApp;
@@ -53,7 +57,7 @@ describe('P3 Countdown Presets', () => {
     }
   });
 
-  it('each default preset is within valid Countdown range (1s–120min)', () => {
+  it('each default preset is within valid Countdown range (1s–4h)', () => {
     const state = app.useSettingsStore.getState();
     for (const presetMs of state.settings.countdownPresetsMs) {
       assert.ok(presetMs >= COUNTDOWN_MIN_MS, `preset ${presetMs} below minimum`);
@@ -69,6 +73,13 @@ describe('P3 Countdown Presets', () => {
     assert.equal(state.settings.countdownDurationMs, presetMs);
   });
 
+  it('all eight presets can be selected one at a time', () => {
+    for (const presetMs of DEFAULT_PRESETS_MS) {
+      app.useSettingsStore.getState().updateSettings({ countdownDurationMs: presetMs });
+      assert.equal(app.useSettingsStore.getState().settings.countdownDurationMs, presetMs);
+    }
+  });
+
   it('minimum 1-second boundary is respected for presets', () => {
     // The default presets are all >= 5 minutes, well above 1 second
     const state = app.useSettingsStore.getState();
@@ -77,7 +88,7 @@ describe('P3 Countdown Presets', () => {
     }
   });
 
-  it('maximum 120-minute boundary is respected for presets', () => {
+  it('maximum 4-hour boundary is respected for presets', () => {
     const state = app.useSettingsStore.getState();
     for (const presetMs of state.settings.countdownPresetsMs) {
       assert.ok(presetMs <= COUNTDOWN_MAX_MS);
@@ -87,7 +98,7 @@ describe('P3 Countdown Presets', () => {
   it('out-of-range preset values are filtered out by UI logic', () => {
     // Simulate invalid persisted presets
     app.useSettingsStore.getState().updateSettings({
-      countdownPresetsMs: [500, 15 * 60 * 1000, 200 * 60 * 1000], // 500ms (too small), 15min (valid), 200min (too large)
+      countdownPresetsMs: [500, 15 * 60 * 1000, 300 * 60 * 1000], // 500ms (too small), 15min (valid), 300min (too large)
     });
 
     const state = app.useSettingsStore.getState();
@@ -200,12 +211,15 @@ describe('P3 Countdown Presets', () => {
   it('default preset list matches expected known values', () => {
     const state = app.useSettingsStore.getState();
     const presets = state.settings.countdownPresetsMs;
-    assert.equal(presets.length, 5);
+    assert.equal(presets.length, 8);
     assert.equal(presets[0], 5 * 60 * 1000);   // 5 min
     assert.equal(presets[1], 15 * 60 * 1000);  // 15 min
     assert.equal(presets[2], 30 * 60 * 1000);  // 30 min
     assert.equal(presets[3], 45 * 60 * 1000);  // 45 min
     assert.equal(presets[4], 60 * 60 * 1000);  // 60 min
+    assert.equal(presets[5], 2 * 60 * 60 * 1000); // 2 hours
+    assert.equal(presets[6], 3 * 60 * 60 * 1000); // 3 hours
+    assert.equal(presets[7], 4 * 60 * 60 * 1000); // 4 hours
   });
 
   it('selecting preset does not automatically start timer', () => {
@@ -217,11 +231,11 @@ describe('P3 Countdown Presets', () => {
     assert.equal(timerState.status, 'idle'); // Timer not started
   });
 
-  it('Countdown max duration (120 min) is respected by preset validation', () => {
-    // The default presets max is 60 min, well within 120 min
+  it('Countdown max duration (4 hours) is respected by preset validation', () => {
+    // The default presets max is 4 hours, exactly at the supported maximum.
     const state = app.useSettingsStore.getState();
     for (const presetMs of state.settings.countdownPresetsMs) {
-      assert.ok(presetMs <= 120 * 60 * 1000);
+      assert.ok(presetMs <= 4 * 60 * 60 * 1000);
     }
   });
 

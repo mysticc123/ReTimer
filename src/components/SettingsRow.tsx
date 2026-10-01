@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useTheme } from '../theme';
 import { PressableScale } from './PressableScale';
 import { spacing, typography } from '../theme/colors';
@@ -7,9 +7,12 @@ import { spacing, typography } from '../theme/colors';
 interface SettingsRowProps {
   label: string;
   value?: string | number;
+  description?: string;
   /** Present = navigation row: right value + chevron, whole row pressable. */
   onPress?: () => void;
   accessibilityLabel?: string;
+  /** Keep this row stationary when used in the Settings screen. */
+  disableScale?: boolean;
   /** Drop the bottom divider (last row in a card). Defaults to true. */
   showDivider?: boolean;
 }
@@ -22,25 +25,41 @@ interface SettingsRowProps {
 export const SettingsRow: React.FC<SettingsRowProps> = ({
   label,
   value,
+  description,
   onPress,
   accessibilityLabel,
+  disableScale = false,
   showDivider = true,
 }) => {
   const { colors, typeface } = useTheme();
 
   const content = (
     <>
+      <View style={styles.labelSlot}>
       <Text
         style={[
           styles.label,
           { color: colors.primaryText, fontFamily: typeface },
         ]}
-        numberOfLines={1}
+        numberOfLines={description ? 2 : 1}
       >
         {label}
       </Text>
+      {description && (
+        <Text
+          style={[
+            styles.description,
+            { color: colors.secondaryText, fontFamily: typeface },
+          ]}
+        >
+          {description}
+        </Text>
+      )}
+      </View>
 
-      {value !== undefined && (
+      {(value !== undefined || onPress) && (
+        <View style={styles.trailing}>
+        {value !== undefined && (
         <Text
           style={[
             styles.value,
@@ -61,6 +80,8 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
           ›
         </Text>
       )}
+        </View>
+      )}
     </>
   );
 
@@ -76,39 +97,62 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
     );
   }
 
-  return (
-    <PressableScale
-      onPress={onPress}
-      style={[styles.container, dividerStyle]}
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole="button"
-    >
-      {content}
-    </PressableScale>
-  );
+  const pressableProps = {
+    onPress,
+    style: [styles.container, dividerStyle],
+    accessibilityLabel,
+    accessibilityRole: 'button' as const,
+  };
+
+  if (disableScale) {
+    return (
+      <Pressable
+        {...pressableProps}
+        style={({ pressed }) => [styles.container, dividerStyle, pressed && styles.pressed]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+
+  return <PressableScale {...pressableProps}>{content}</PressableScale>;
 };
 
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    minHeight: 56,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+  labelSlot: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: spacing.md,
   },
   label: {
     fontSize: typography.fontSizes.md,
-    // Pin the value/chevron right without ever collapsing the label: a long
-    // value wraps instead, keeping short rows unchanged.
-    flexGrow: 1,
-    flexShrink: 0,
-    flexBasis: 'auto',
+  },
+  description: {
+    marginTop: spacing.xs,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: 18,
+  },
+  trailing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+    maxWidth: '48%',
   },
   value: {
     fontSize: typography.fontSizes.md,
     marginRight: spacing.xs,
     flexShrink: 1,
     textAlign: 'right' as const,
-    maxWidth: '60%',
   },
   chevron: {
     fontSize: typography.fontSizes.xl,

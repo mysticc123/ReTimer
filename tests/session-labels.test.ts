@@ -17,6 +17,7 @@ import type { LoadedApp } from './helpers/stores.js';
 import { buildAnalyticsViewModel } from '../src/utils/analyticsViewModel.js';
 import type { FocusSession } from '../src/types';
 import { normalizeLabel, MAX_LABEL_LENGTH } from '../src/types';
+import * as clock from './helpers/clock.js';
 
 const T0 = 1_700_000_000_000;
 const MIN = 60_000;
@@ -149,12 +150,16 @@ describe('P7 Session Labels', () => {
       assert.equal(sessionsAfterBreak.length, 1);
     });
 
-    it('Count-Up does not create a history record even with label', () => {
+    it('Count-Up history preserves the label and actual elapsed duration', () => {
       app.useTimerStore.getState().initializeTimer('countup', 0, undefined, undefined, 'Count-Up Label');
       app.useTimerStore.getState().startTimer();
+      clock.advance(37_000);
       app.useTimerStore.getState().completeTimer();
       const sessions = app.useTimerStore.getState().sessions;
-      assert.equal(sessions.length, 0);
+      assert.equal(sessions.length, 1);
+      assert.equal(sessions[0].mode, 'countup');
+      assert.equal(sessions[0].label, 'Count-Up Label');
+      assert.equal(sessions[0].actualDurationMs, 37_000);
     });
   });
 

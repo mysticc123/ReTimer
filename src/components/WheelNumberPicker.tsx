@@ -9,7 +9,6 @@ import {
   NativeScrollEvent,
 } from 'react-native';
 import { useTheme, resolveTypeface } from '../theme';
-import { useSettingsStore } from '../store';
 import { spacing, typography } from '../theme/colors';
 import { formatTwoDigits } from '../utils/durationFormat';
 
@@ -51,8 +50,6 @@ export const WheelNumberPicker: React.FC<WheelNumberPickerProps> = ({
   visibleRows = 5,
 }) => {
   const { colors, accentColor, fontFamily } = useTheme();
-  const reduceMotion = useSettingsStore((state) => state.settings.reducedMotion);
-
   // Force an odd row count so exactly one row sits in the center.
   const oddRows = Math.max(3, visibleRows % 2 === 1 ? visibleRows : visibleRows + 1);
   const wheelHeight = rowHeight * oddRows;
@@ -93,7 +90,7 @@ export const WheelNumberPicker: React.FC<WheelNumberPickerProps> = ({
   const handleSelect = (item: number, index: number) => {
     lastSentIndex.current = index;
     onChange(item);
-    listRef.current?.scrollToIndex({ index, animated: !reduceMotion });
+    listRef.current?.scrollToIndex({ index, animated: true });
   };
 
   return (

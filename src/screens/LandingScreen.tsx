@@ -9,14 +9,14 @@ import { PressableScale } from '../components/PressableScale';
 import { DurationEditorModal } from '../components/DurationEditorModal';
 import { RoundsEditorModal } from '../components/RoundsEditorModal';
 import { formatDurationShort } from '../utils/durationFormat';
-import Animated, { FadeInDown, FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeIn, FadeOut } from 'react-native-reanimated';
 import { useTheme, resolveTypeface } from '../theme';
 import { useSettingsStore, useTimerStore } from '../store';
 import type { IntervalConfig, PomodoroConfig, TimerMode } from '../types';
-import { spacing, typography, borderRadius, getContrastText } from '../theme/colors';
+import { spacing, typography, borderRadius, getContrastText, colors as paletteColors } from '../theme/colors';
 import { MAX_LABEL_LENGTH, normalizeLabel } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons/Ionicons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 type RootStackParamList = {
   Landing: undefined;
@@ -35,7 +35,7 @@ type ConfigurableMode = 'pomodoro' | 'countdown' | 'interval';
 // Countdown accepts any duration from 1 second up to the maximum.
 // (Pomodoro and Interval keep their own intentional minimums.)
 const COUNTDOWN_MIN_MS = 1000;
-const COUNTDOWN_MAX_MS = 120 * 60 * 1000;
+const COUNTDOWN_MAX_MS = 4 * 60 * 60 * 1000;
 const INTERVAL_WORK_MIN_MS = 15 * 1000;
 const INTERVAL_WORK_MAX_MS = 5 * 60 * 1000;
 const INTERVAL_REST_MIN_MS = 5 * 1000;
@@ -70,6 +70,7 @@ export const LandingScreen: React.FC = () => {
     minutesMax: number;
   } | null>(null);
   const [roundsEditorOpen, setRoundsEditorOpen] = useState(false);
+  const [activeTimerBannerDismissed, setActiveTimerBannerDismissed] = useState(false);
   /**
    * Draft label input for the currently expanded timer mode.
    * Cleared when a mode is collapsed; passed to initializeTimer on Start.
@@ -104,6 +105,12 @@ export const LandingScreen: React.FC = () => {
   const hasResumableTimer = timer.status === 'running' || timer.status === 'paused';
   const resumableTimerMode = hasResumableTimer ? timer.mode : null;
   const resumableTimerStatus = hasResumableTimer ? timer.status : null;
+
+  useEffect(() => {
+    if (!hasResumableTimer) {
+      setActiveTimerBannerDismissed(false);
+    }
+  }, [hasResumableTimer, timer.phaseStartedAtMs, timer.mode]);
 
   // Trigger light haptic on mount for feedback that app is ready
   useEffect(() => {
@@ -274,6 +281,11 @@ export const LandingScreen: React.FC = () => {
         { backgroundColor: colors.background },
       ]}
     >
+      <ScrollView
+        style={styles.timerList}
+        contentContainerStyle={styles.timerListContent}
+        showsVerticalScrollIndicator={false}
+      >
       {/* Header */}
       <View style={styles.header}>
         <Text
@@ -336,17 +348,20 @@ export const LandingScreen: React.FC = () => {
       </Text>
 
       {/* Active Timer Indicator (P2) — prominent, persistent when a timer is running/paused */}
-      {hasResumableTimer && (
-        <PressableScale
-          onPress={resumeExistingTimer}
-          accessibilityLabel={`Resume ${modeLabel(resumableTimerMode!)} timer (${resumableTimerStatus})`}
-          accessibilityRole="button"
+      {hasResumableTimer && !activeTimerBannerDismissed && (
+        <View
           style={[
             styles.activeTimerIndicator,
             { backgroundColor: accentColor, borderColor: colors.border },
           ]}
         >
-          <View style={styles.activeTimerIndicatorContent}>
+          <PressableScale
+            onPress={resumeExistingTimer}
+            accessibilityLabel={`Resume ${modeLabel(resumableTimerMode!)} timer (${resumableTimerStatus})`}
+            accessibilityRole="button"
+            style={styles.activeTimerIndicatorPressTarget}
+          >
+            <View style={styles.activeTimerIndicatorContent}>
             <View style={styles.activeTimerIndicatorIcon}>
               <Ionicons
                 name={resumableTimerStatus === 'running' ? 'pause-circle' : 'play-circle'}
@@ -388,16 +403,21 @@ export const LandingScreen: React.FC = () => {
                 {resumableTimerStatus === 'running' ? 'Tap to return' : 'Tap to resume'}
               </Text>
             </View>
-          </View>
-        </PressableScale>
+            </View>
+          </PressableScale>
+          <Pressable
+            onPress={() => setActiveTimerBannerDismissed(true)}
+            accessibilityLabel="Dismiss active timer banner"
+            accessibilityRole="button"
+            hitSlop={8}
+            style={styles.activeTimerIndicatorDismiss}
+          >
+            <Ionicons name="close" size={20} color={onAccentText} />
+          </Pressable>
+        </View>
       )}
 
       {/* Timer Options */}
-      <ScrollView
-        style={styles.timerList}
-        contentContainerStyle={styles.timerListContent}
-        showsVerticalScrollIndicator={false}
-      >
         <TimerCard
           mode="pomodoro"
           title="Pomodoro"
@@ -410,13 +430,8 @@ export const LandingScreen: React.FC = () => {
 
         {expandedMode === 'pomodoro' && (
           <Animated.View
-            entering={settings.reducedMotion ? undefined : FadeInDown.duration(200)}
-            exiting={settings.reducedMotion ? undefined : FadeOut.duration(150)}
-            layout={
-              settings.reducedMotion
-                ? undefined
-                : LinearTransition.springify().damping(24).stiffness(300)
-            }
+            entering={FadeInDown.duration(160)}
+            exiting={FadeOut.duration(120)}
             style={[styles.configPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}
           >
             <SettingsRow
@@ -497,13 +512,8 @@ export const LandingScreen: React.FC = () => {
 
         {expandedMode === 'countdown' && (
           <Animated.View
-            entering={settings.reducedMotion ? undefined : FadeInDown.duration(200)}
-            exiting={settings.reducedMotion ? undefined : FadeOut.duration(150)}
-            layout={
-              settings.reducedMotion
-                ? undefined
-                : LinearTransition.springify().damping(24).stiffness(300)
-            }
+            entering={FadeInDown.duration(160)}
+            exiting={FadeOut.duration(120)}
             style={[styles.configPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}
           >
             {/* Countdown Presets (P3) — quick-select from persisted countdownPresetsMs */}
@@ -519,12 +529,13 @@ export const LandingScreen: React.FC = () => {
                   Presets
                 </Text>
                 <View style={styles.presetGrid}>
-                  {settings.countdownPresetsMs.map((presetMs, index) => {
+                  {settings.countdownPresetsMs.map((presetMs) => {
                     const isValidPreset = presetMs >= COUNTDOWN_MIN_MS && presetMs <= COUNTDOWN_MAX_MS;
                     if (!isValidPreset) return null;
+                    const isSelected = settings.countdownDurationMs === presetMs;
                     return (
                       <PressableScale
-                        key={index}
+                        key={presetMs}
                         onPress={() => {
                           if (settings.hapticsEnabled) {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -535,13 +546,19 @@ export const LandingScreen: React.FC = () => {
                         accessibilityRole="button"
                         style={[
                           styles.presetButton,
-                          { backgroundColor: colors.surface, borderColor: colors.border },
+                          {
+                            backgroundColor: isSelected ? paletteColors.accent.orange : colors.surface,
+                            borderColor: isSelected ? paletteColors.accent.orange : colors.border,
+                          },
                         ]}
                       >
                         <Text
                           style={[
                             styles.presetButtonText,
-                            { color: colors.primaryText, fontFamily: resolveTypeface(fontFamily, '600') },
+                            {
+                              color: isSelected ? getContrastText(paletteColors.accent.orange) : colors.primaryText,
+                              fontFamily: resolveTypeface(fontFamily, '600'),
+                            },
                           ]}
                         >
                           {formatDurationShort(presetMs)}
@@ -555,7 +572,7 @@ export const LandingScreen: React.FC = () => {
             <SettingsRow
               label="Duration"
               value={formatShortDuration(settings.countdownDurationMs)}
-              onPress={() => openDurationEditor('countdownDurationMs', 'Countdown duration', COUNTDOWN_MIN_MS, COUNTDOWN_MAX_MS, 120)}
+              onPress={() => openDurationEditor('countdownDurationMs', 'Countdown duration', COUNTDOWN_MIN_MS, COUNTDOWN_MAX_MS, 240)}
               accessibilityLabel="Change countdown duration"
             />
             <View style={styles.labelInputContainer}>
@@ -626,13 +643,8 @@ export const LandingScreen: React.FC = () => {
 
         {expandedMode === 'interval' && (
           <Animated.View
-            entering={settings.reducedMotion ? undefined : FadeInDown.duration(200)}
-            exiting={settings.reducedMotion ? undefined : FadeOut.duration(150)}
-            layout={
-              settings.reducedMotion
-                ? undefined
-                : LinearTransition.springify().damping(24).stiffness(300)
-            }
+            entering={FadeInDown.duration(160)}
+            exiting={FadeOut.duration(120)}
             style={[styles.configPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}
           >
             <SettingsRow
@@ -731,7 +743,7 @@ export const LandingScreen: React.FC = () => {
 
       {/* Replacement guard: confirms discarding an in-progress session.
           Same destructive-confirm chrome as History (backdrop, card,
-          Cancel/replace actions, 150ms fade); Cancel leaves the active
+          Cancel/replace actions, 120ms fade); Cancel leaves the active
           timer untouched in the store. */}
       <Modal
         visible={pendingSelect !== null}
@@ -742,8 +754,8 @@ export const LandingScreen: React.FC = () => {
         accessibilityViewIsModal
       >
         <Animated.View
-          entering={settings.reducedMotion ? undefined : FadeIn.duration(150)}
-          exiting={settings.reducedMotion ? undefined : FadeOut.duration(150)}
+          entering={FadeIn.duration(120)}
+          exiting={FadeOut.duration(120)}
           style={styles.backdrop}
         >
           <Pressable
@@ -753,8 +765,8 @@ export const LandingScreen: React.FC = () => {
             accessibilityRole="button"
           />
           <Animated.View
-            entering={settings.reducedMotion ? undefined : FadeIn.duration(150)}
-            exiting={settings.reducedMotion ? undefined : FadeOut.duration(150)}
+            entering={FadeIn.duration(120)}
+            exiting={FadeOut.duration(120)}
             style={[
               styles.confirmCard,
               { backgroundColor: colors.surface, borderColor: colors.border },
@@ -882,6 +894,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.md,
     gap: spacing.md,
+  },
+  activeTimerIndicatorPressTarget: {
+    flex: 1,
+  },
+  activeTimerIndicatorDismiss: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    padding: spacing.xs,
   },
   activeTimerIndicatorIcon: {
     width: 44,

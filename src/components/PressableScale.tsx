@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 import type { ComponentProps } from 'react';
 import { Pressable } from 'react-native';
 import type { GestureResponderEvent, StyleProp, ViewStyle } from 'react-native';
@@ -9,24 +9,10 @@ import {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { useSettingsStore } from '../store';
-import { useTheme } from '../theme';
 
 const AnimatedPressable = createAnimatedComponent(Pressable);
 
 type PressableProps = ComponentProps<typeof Pressable>;
-
-/**
- * Restrained Android press tint. RN only installs a ripple when `android_ripple`
- * is set, so without it every pressable falls back to the platform's default
- * `colorHighlight` — a near-white overlay that flashes hard on the dark/OLED
- * surfaces. A low-alpha overlay of the opposite luminance keeps the press
- * legible in both themes without a bright flash. `borderless: false` keeps the
- * ripple inside the control; `foreground: true` draws it above the row's own
- * children (switch, chevron, value).
- */
-const DARK_TINT = 'rgba(255, 255, 255, 0.10)';
-const LIGHT_TINT = 'rgba(0, 0, 0, 0.10)';
 
 interface PressableScaleProps {
   onPress?: (event: GestureResponderEvent) => void;
@@ -48,25 +34,26 @@ interface PressableScaleProps {
   hitSlop?: PressableProps['hitSlop'];
   /** Scale applied while pressed. Defaults to 0.98 for all callers. */
   scaleTo?: number;
+  /** Opt into a deliberately shaped Android ripple for this surface. */
+  androidRipple?: PressableProps['android_ripple'] | null;
 }
 
 /**
  * Small reusable tactile press wrapper (single press-animation system).
  *
- * PRESS: snaps quickly toward `scaleTo` via withTiming (~90ms, UI thread)
+ * PRESS: snaps quickly toward `scaleTo` via withTiming (~70ms, UI thread)
  * so feedback starts immediately on touch-down.
  * RELEASE: settles back to 1.0 with a soft, restrained spring
  * (damping 16 / stiffness 160) — subtle physical feedback, no bounce.
  * pressOut always retargets 1.0, so rapid tapping can never leave the
  * element stuck below scale.
  *
- * Honors the existing `reducedMotion` setting: when enabled, no scaling occurs.
  * Transform scale never affects surrounding layout.
  *
- * TOUCH TINT: every caller also gets the shared `androidRipple`, which replaces
- * the platform's bright default press highlight with a theme-aware, low-alpha
- * tint. It is not an animation, so reduced motion still gets press feedback
- * (and only the scale animation is suppressed).
+ * TOUCH FEEDBACK: compact controls use the scale feedback only by default.
+ * Native ripples are opt-in because Android's unbounded rectangular foreground
+ * treatment is not shape-safe for text/icon controls. Surfaces with an
+ * explicit geometry may pass a shaped `androidRipple` when appropriate.
  */
 export const PressableScale: React.FC<PressableScaleProps> = ({
   onPress,
@@ -81,36 +68,26 @@ export const PressableScale: React.FC<PressableScaleProps> = ({
   accessibilityHint,
   hitSlop,
   scaleTo = 0.98,
+  androidRipple: androidRippleOverride,
 }) => {
-  const reduceMotion = useSettingsStore((state) => state.settings.reducedMotion);
-  const { isDark } = useTheme();
   const scale = useSharedValue(1);
-
-  const androidRipple = useMemo(
-    () => ({
-      color: isDark ? DARK_TINT : LIGHT_TINT,
-      borderless: false,
-      foreground: true,
-    }),
-    [isDark]
-  );
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
 
   const handlePressIn = useCallback(() => {
-    if (reduceMotion || disabled) return;
-    scale.value = withTiming(scaleTo, { duration: 90 });
-  }, [reduceMotion, disabled, scale, scaleTo]);
+    if (disabled) return;
+    scale.value = withTiming(scaleTo, { duration: 70 });
+  }, [disabled, scale, scaleTo]);
 
   const handlePressOut = useCallback(() => {
-    if (reduceMotion || disabled) {
+    if (disabled) {
       scale.value = 1;
       return;
     }
     scale.value = withSpring(1, { damping: 16, stiffness: 160 });
-  }, [reduceMotion, disabled, scale]);
+  }, [disabled, scale]);
 
   return (
     <AnimatedPressable
@@ -125,7 +102,7 @@ export const PressableScale: React.FC<PressableScaleProps> = ({
       accessibilityState={accessibilityState}
       accessibilityHint={accessibilityHint}
       hitSlop={hitSlop}
-      android_ripple={androidRipple}
+      android_ripple={androidRippleOverride ?? undefined}
       style={[style, animatedStyle]}
     >
       {children}

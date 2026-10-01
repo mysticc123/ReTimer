@@ -5,6 +5,7 @@ import { AppSettings, DEFAULT_SETTINGS, FocusSession, PomodoroConfig, TimerState
 import { migrateLegacyFontSize } from '../utils/fontScale';
 import { normalizeLabel } from '../types';
 import { playCompletionSound, withoutCompletionSound } from '../services/completionSound';
+import { useAnalyticsStore } from './analytics';
 
 // Initialize MMKV storage
 const storage = createMMKV();
@@ -62,6 +63,15 @@ interface SettingsState {
   resetSettings: () => void;
 }
 
+/** Keep newly added built-in Countdown presets visible after rehydrating an
+ * older settings snapshot that only contained the original five values. */
+const withAllCountdownPresets = (settings: AppSettings): AppSettings => ({
+  ...settings,
+  countdownPresetsMs: Array.from(
+    new Set([...DEFAULT_SETTINGS.countdownPresetsMs, ...settings.countdownPresetsMs])
+  ),
+});
+
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
@@ -76,12 +86,16 @@ export const useSettingsStore = create<SettingsState>()(
               if (legacyLargerText !== undefined) {
                 // Migrate the old boolean to new fontScale
                 const fontScale = migrateLegacyFontSize(legacyLargerText);
-                return {
+                const {
+                  largerText: _legacyLargerText,
+                  reducedMotion: _legacyReducedMotion,
+                  ...storedSettings
+                } = parsed.state.settings;
+                return withAllCountdownPresets({
                   ...DEFAULT_SETTINGS,
-                  ...parsed.state.settings,
-                  largerText: undefined, // Remove old property
+                  ...storedSettings,
                   fontScale, // Set new property
-                };
+                });
               }
             }
           } catch (e) {
@@ -116,10 +130,14 @@ export const useSettingsStore = create<SettingsState>()(
         };
         const rawSettings = persisted.settings;
         if (rawSettings && typeof rawSettings === 'object') {
+          const { reducedMotion: _legacyReducedMotion, ...settingsWithoutReducedMotion } = rawSettings;
           return {
             ...currentState,
             ...persisted,
-            settings: { ...DEFAULT_SETTINGS, ...rawSettings } as AppSettings,
+            settings: withAllCountdownPresets({
+              ...DEFAULT_SETTINGS,
+              ...settingsWithoutReducedMotion,
+            } as AppSettings),
           };
         }
         return currentState;
@@ -152,6 +170,7 @@ interface TimerStoreState {
   // Phase 1A: focus-session history (persisted, bounded, data-only)
   sessions: FocusSession[];
   clearSessionHistory: () => void;
+  deleteSessionHistoryItem: (id: string) => void;
   
   // State updates
   updateElapsedTime: (elapsedMs: number) => void;
@@ -319,22 +338,31 @@ export const useTimerStore = create<TimerStoreState>()(
         const completedAtMs = Date.now();
         let sessions = storedSessions;
 
-        // Focus-only history: countdown completions (plus legacy config-less
-        // pomodoro timers, recorded as focus). Count-up has no completion
-        // semantics and never records.
-        if (timer.mode === 'countdown' || timer.mode === 'pomodoro') {
+        // Focus-only history: completed countdown, count-up, and pomodoro
+        // focus phases are recorded exactly once. Count-up has no planned
+        // duration, so its actual duration is read from the live anchor (or
+        // the frozen elapsed value when the phase was paused before a caller
+        // completes it).
+        if (timer.mode === 'countdown' || timer.mode === 'countup' || timer.mode === 'pomodoro') {
           if (isValidStartedAt(timer.phaseStartedAtMs)) {
+            const actualDurationMs =
+              timer.mode === 'countup' && timer.targetTimestamp !== null
+                ? Math.max(0, completedAtMs - timer.targetTimestamp)
+                : timer.mode === 'countup'
+                  ? Math.max(0, timer.elapsedTimeMs)
+                  : timer.durationMs;
             const record: FocusSession = {
               id: `${completedAtMs}-${++sessionCounter}`,
-              mode: timer.mode === 'pomodoro' ? 'pomodoro' : 'countdown',
+              mode: timer.mode,
               phase: timer.mode === 'pomodoro' ? 'focus' : 'single',
               plannedDurationMs: timer.durationMs,
-              actualDurationMs: timer.durationMs,
+              actualDurationMs,
               startedAtMs: timer.phaseStartedAtMs,
               completedAtMs,
               label: timer.label,
             };
             sessions = [...sessions, record].slice(-MAX_SESSIONS);
+            useAnalyticsStore.getState().recordSession(record);
           } else {
             devWarn(
               `Skipping focus-session record for ${timer.mode}: missing phase start timestamp. Transition preserved.`
@@ -376,7 +404,12 @@ export const useTimerStore = create<TimerStoreState>()(
               ...timer,
               status: 'completed',
               targetTimestamp: null,
-              elapsedTimeMs: timer.durationMs,
+              elapsedTimeMs:
+                timer.mode === 'countup' && timer.targetTimestamp !== null
+                  ? Math.max(0, completedAtMs - timer.targetTimestamp)
+                  : timer.mode === 'countup'
+                    ? Math.max(0, timer.elapsedTimeMs)
+                    : timer.durationMs,
               phaseStartedAtMs: null,
             },
             sessions,
@@ -385,8 +418,8 @@ export const useTimerStore = create<TimerStoreState>()(
 
         // P10: the completion sound is decided and dispatched from the
         // canonical completion transition (exactly-once by construction),
-        // not from any screen. Count-up never reaches here, so it never
-        // sounds. The pre-transition `timer` describes the phase that just
+        // not from any screen. Count-up reaches this transition too, but its
+        // mode is explicitly suppressed by the sound decision. The pre-transition `timer` describes the phase that just
         // finished, which is exactly what the sound decision reads.
         playCompletionSound(timer, useSettingsStore.getState().settings);
 
@@ -441,6 +474,7 @@ export const useTimerStore = create<TimerStoreState>()(
             label: timer.label,
           };
           sessions = [...sessions, record].slice(-MAX_SESSIONS);
+          useAnalyticsStore.getState().recordSession(record);
         } else {
           devWarn(
             'Skipping focus-session record for interval work: missing phase start timestamp. Transition preserved.'
@@ -516,6 +550,7 @@ export const useTimerStore = create<TimerStoreState>()(
               label: timer.label,
             };
             sessions = [...sessions, record].slice(-MAX_SESSIONS);
+            useAnalyticsStore.getState().recordSession(record);
           } else {
             devWarn(
               'Skipping focus-session record for pomodoro focus: missing phase start timestamp. Transition preserved.'
@@ -586,6 +621,12 @@ export const useTimerStore = create<TimerStoreState>()(
 
       clearSessionHistory: () => {
         set({ sessions: [] });
+      },
+
+      deleteSessionHistoryItem: (id) => {
+        set((state) => ({
+          sessions: state.sessions.filter((session) => session.id !== id),
+        }));
       },
 
       getRemainingTime: () => {

@@ -9,6 +9,7 @@ import { loadAnalytics, setNowFn } from './helpers/analytics.js';
 import type { FocusSession } from './helpers/analytics.js';
 
 const T0 = 1_700_000_000_000;
+const MINUTE = 60_000;
 
 function makeSession(overrides: Partial<FocusSession> = {}): FocusSession {
   return {
@@ -44,6 +45,26 @@ describe('focused time and session count', () => {
       { ...makeSession(), actualDurationMs: 10_000 },
     ];
     assert.equal(analytics.calculateFocusedTime(sessions), 60_000);
+  });
+
+  it('count-up uses the same completed-session pipeline in every period', () => {
+    const countup = makeSession({
+      mode: 'countup',
+      plannedDurationMs: 0,
+      actualDurationMs: 37 * MINUTE,
+      completedAtMs: T0,
+    });
+    const countdown = makeSession({
+      actualDurationMs: 23 * MINUTE,
+      completedAtMs: T0,
+    });
+    const sessions = [countup, countdown];
+    assert.equal(analytics.calculateFocusedTime(sessions), 60 * MINUTE);
+    assert.equal(analytics.buildWeeklySummary(sessions, T0).focusedMs, 60 * MINUTE);
+    assert.equal(analytics.buildMonthlySummary(sessions, T0).focusedMs, 60 * MINUTE);
+    assert.equal(analytics.buildYearSummary(sessions, T0).focusedMs, 60 * MINUTE);
+    assert.equal(analytics.buildOverallSummary(sessions, T0).focusedMs, 60 * MINUTE);
+    assert.equal(analytics.buildDailySummary(sessions, T0)!.sessionCount, 2);
   });
 
   it('zero sessions returns zero focused time', () => {

@@ -17,6 +17,7 @@ interface EditorModalShellProps {
   onSave: () => void;
   onCancel: () => void;
   children: React.ReactNode;
+  disableEntryScale?: boolean;
 }
 
 /**
@@ -33,11 +34,11 @@ export const EditorModalShell: React.FC<EditorModalShellProps> = ({
   onSave,
   onCancel,
   children,
+  disableEntryScale = false,
 }) => {
   const { colors, accentColor, fontFamily, typeface } = useTheme();
-  const reduceMotion = useSettingsStore((state) => state.settings.reducedMotion);
   const hapticsEnabled = useSettingsStore((state) => state.settings.hapticsEnabled);
-  const enterScaleStyle = useModalEnterScale(visible, reduceMotion);
+  const enterScaleStyle = useModalEnterScale(visible, !disableEntryScale);
 
   const handleSave = () => {
     if (saveDisabled) return;
@@ -57,8 +58,8 @@ export const EditorModalShell: React.FC<EditorModalShellProps> = ({
       accessibilityViewIsModal
     >
       <Animated.View
-        entering={reduceMotion ? undefined : FadeIn.duration(150)}
-        exiting={reduceMotion ? undefined : FadeOut.duration(150)}
+        entering={FadeIn.duration(120)}
+        exiting={FadeOut.duration(120)}
         style={styles.backdrop}
       >
         <Pressable
@@ -68,8 +69,8 @@ export const EditorModalShell: React.FC<EditorModalShellProps> = ({
           accessibilityRole="button"
         />
         <Animated.View
-          entering={reduceMotion ? undefined : FadeIn.duration(150)}
-          exiting={reduceMotion ? undefined : FadeOut.duration(150)}
+          entering={FadeIn.duration(120)}
+          exiting={FadeOut.duration(120)}
           style={[
             styles.card,
             { backgroundColor: colors.surface, borderColor: colors.border },

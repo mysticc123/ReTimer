@@ -102,7 +102,8 @@ describe('P10 Completion Sound', () => {
     api.completeTimer();
 
     assert.deepEqual(played, []);
-    assert.equal(app.useTimerStore.getState().sessions.length, 0);
+    assert.equal(app.useTimerStore.getState().sessions.length, 1);
+    assert.equal(app.useTimerStore.getState().sessions[0].actualDurationMs, DUR * 5);
   });
 
   it('6. countdown repeat plays exactly one sound per completed cycle', () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Switch } from 'react-native';
+import { View, Text, StyleSheet, Switch, Pressable } from 'react-native';
 import { useTheme } from '../theme';
 import { PressableScale } from './PressableScale';
 import { spacing, typography } from '../theme/colors';
@@ -9,6 +9,8 @@ interface SettingsSwitchRowProps {
   value: boolean;
   onValueChange: (next: boolean) => void;
   accessibilityLabel?: string;
+  /** Keep this row stationary when used in the Settings screen. */
+  disableScale?: boolean;
   /** Drop the bottom divider (last row in a card). Defaults to true. */
   showDivider?: boolean;
 }
@@ -25,6 +27,7 @@ export const SettingsSwitchRow: React.FC<SettingsSwitchRowProps> = ({
   value,
   onValueChange,
   accessibilityLabel = label,
+  disableScale = false,
   showDivider = true,
 }) => {
   const { colors, accentColor, typeface } = useTheme();
@@ -33,14 +36,8 @@ export const SettingsSwitchRow: React.FC<SettingsSwitchRowProps> = ({
     ? { borderBottomWidth: 1, borderBottomColor: colors.border }
     : null;
 
-  return (
-    <PressableScale
-      onPress={() => onValueChange(!value)}
-      style={[styles.container, dividerStyle]}
-      accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
-      accessibilityLabel={accessibilityLabel}
-    >
+  const content = (
+    <>
       <View style={styles.labelSlot}>
         <Text
           style={[
@@ -59,8 +56,29 @@ export const SettingsSwitchRow: React.FC<SettingsSwitchRowProps> = ({
         thumbColor="#FFFFFF"
         ios_backgroundColor={colors.surfaceElevated}
       />
-    </PressableScale>
+    </>
   );
+
+  const pressableProps = {
+    onPress: () => onValueChange(!value),
+    style: [styles.container, dividerStyle],
+    accessibilityRole: 'switch' as const,
+    accessibilityState: { checked: value },
+    accessibilityLabel,
+  };
+
+  if (disableScale) {
+    return (
+      <Pressable
+        {...pressableProps}
+        style={({ pressed }) => [styles.container, dividerStyle, pressed && styles.pressed]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+
+  return <PressableScale {...pressableProps}>{content}</PressableScale>;
 };
 
 const styles = StyleSheet.create({
@@ -68,11 +86,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.md,
+    minHeight: 56,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
+  pressed: {
+    opacity: 0.72,
+  },
   labelSlot: {
+    flex: 1,
     flexShrink: 1,
+    minWidth: 0,
     paddingRight: spacing.md,
   },
   label: {

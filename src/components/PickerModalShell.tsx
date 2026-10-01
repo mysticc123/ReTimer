@@ -2,8 +2,6 @@ import React from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useTheme, resolveTypeface } from '../theme';
-import { useSettingsStore } from '../store';
-import { useModalEnterScale } from './useModalEnterScale';
 import { spacing, typography, borderRadius } from '../theme/colors';
 
 interface PickerModalShellProps {
@@ -30,8 +28,6 @@ export const PickerModalShell: React.FC<PickerModalShellProps> = ({
   children,
 }) => {
   const { colors, fontFamily } = useTheme();
-  const reduceMotion = useSettingsStore((state) => state.settings.reducedMotion);
-  const enterScaleStyle = useModalEnterScale(visible, reduceMotion);
 
   return (
     <Modal
@@ -43,8 +39,8 @@ export const PickerModalShell: React.FC<PickerModalShellProps> = ({
       accessibilityViewIsModal
     >
       <Animated.View
-        entering={reduceMotion ? undefined : FadeIn.duration(150)}
-        exiting={reduceMotion ? undefined : FadeOut.duration(150)}
+        entering={FadeIn.duration(120)}
+        exiting={FadeOut.duration(120)}
         style={styles.backdrop}
       >
         <Pressable
@@ -54,12 +50,11 @@ export const PickerModalShell: React.FC<PickerModalShellProps> = ({
           accessibilityRole="button"
         />
         <Animated.View
-          entering={reduceMotion ? undefined : FadeIn.duration(150)}
-          exiting={reduceMotion ? undefined : FadeOut.duration(150)}
+          entering={FadeIn.duration(120)}
+          exiting={FadeOut.duration(120)}
           style={[
             styles.card,
             { backgroundColor: colors.surface, borderColor: colors.border },
-            enterScaleStyle,
           ]}
         >
           <Text

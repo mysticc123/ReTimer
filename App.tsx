@@ -11,6 +11,7 @@ import { Roboto_400Regular, Roboto_500Medium, Roboto_600SemiBold, Roboto_700Bold
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { restoreTimerState } from './src/store';
 import { initializeNotifications } from './src/services/notifications';
+import { initializeCompletionSound } from './src/services/completionSoundAudio';
 import { useTheme } from './src/theme';
 
 /**
@@ -49,6 +50,7 @@ export default function App() {
   useEffect(() => {
     if (fontsLoaded) {
       restoreTimerState();
+      initializeCompletionSound();
       const cleanupNotifications = initializeNotifications();
       return cleanupNotifications;
     }

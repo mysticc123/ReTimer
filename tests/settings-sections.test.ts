@@ -12,7 +12,7 @@
  *   runs logic-level modules only (no renderer, no react-test-renderer), so
  *   source inspection is what can actually catch a UI reorganization.
  * - Behavior: the settings behind the GENERAL rows, the Landing Pomodoro
- *   editors, persistence, and the untouched Text Size / Reduced Motion /
+ *   editors, persistence, and the untouched Text Size /
  *   Sound Type defaults, all asserted through the real store.
  */
 
@@ -151,11 +151,11 @@ describe('Settings screen section structure', () => {
     assert.match(body, /Text Size/);
   });
 
-  it('Display still owns Keep Screen Awake, Fullscreen Mode, Reduced Motion', () => {
+  it('Display still owns Keep Screen Awake and Fullscreen Mode', () => {
     const body = section('Display').body;
     assert.match(body, /label="Keep Screen Awake"/);
     assert.match(body, /label="Fullscreen Mode"/);
-    assert.match(body, /label="Reduced Motion"/);
+    assert.doesNotMatch(body, /Reduced Motion/);
   });
 });
 
@@ -288,14 +288,6 @@ describe('Untouched appearance / motion / sound settings', () => {
     assert.equal(readSettings(relaunched)['fontScale'], 1.4);
   });
 
-  it('Reduced Motion default is off and toggling persists', async () => {
-    const app = await loadStores();
-    assert.equal(readSettings(app)['reducedMotion'], false);
-    app.useSettingsStore.getState().updateSettings({ reducedMotion: true });
-    const relaunched = await relaunch();
-    assert.equal(readSettings(relaunched)['reducedMotion'], true);
-  });
-
   it('Sound Type default is gentle-chime and stays selectable', async () => {
     const app = await loadStores();
     assert.equal(readSettings(app)['completionSound'], 'gentle-chime');
@@ -314,7 +306,6 @@ describe('Untouched appearance / motion / sound settings', () => {
       timerCompletionBehavior: 'repeat',
       dailyFocusGoalMs: 90 * 60 * 1000,
       fontScale: 1.2,
-      reducedMotion: true,
       completionSound: 'digital-beep',
     });
     const relaunched = await relaunch();
@@ -323,7 +314,6 @@ describe('Untouched appearance / motion / sound settings', () => {
     assert.equal(settings['timerCompletionBehavior'], 'repeat');
     assert.equal(settings['dailyFocusGoalMs'], 90 * 60 * 1000);
     assert.equal(settings['fontScale'], 1.2);
-    assert.equal(settings['reducedMotion'], true);
     assert.equal(settings['completionSound'], 'digital-beep');
   });
 });

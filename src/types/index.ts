@@ -68,13 +68,13 @@ export type FocusSessionPhase = 'focus' | 'work' | 'single';
 
 /**
  * A completed focus session. Pure data (numbers/strings only) so it is
- * safe for JSON persistence. `actualDurationMs` equals `plannedDurationMs`
- * for every record: a phase that reaches zero delivered its full focus,
- * and pauses only shift wall-clock time (see phaseStartedAtMs tracking).
+ * safe for JSON persistence. Countdown and Pomodoro records use their planned
+ * duration; Count-Up records use the accumulated running duration captured at
+ * completion (pauses do not contribute).
  */
 export interface FocusSession {
   id: string;
-  mode: 'pomodoro' | 'countdown' | 'interval';
+  mode: 'pomodoro' | 'countdown' | 'countup' | 'interval';
   phase: FocusSessionPhase;
   /** 0-indexed interval round of a completed work phase. */
   round?: number;
@@ -180,7 +180,6 @@ export interface AppSettings {
   fullscreenMode: boolean;
 
   // Accessibility
-  reducedMotion: boolean;
   fontScale: number;
 
   // Goals
@@ -207,6 +206,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     30 * 60 * 1000,
     45 * 60 * 1000,
     60 * 60 * 1000,
+    2 * 60 * 60 * 1000,
+    3 * 60 * 60 * 1000,
+    4 * 60 * 60 * 1000,
   ],
   intervalWorkMs: 30 * 1000,   // Default 30 seconds work
   intervalRestMs: 10 * 1000,   // Default 10 seconds rest
@@ -219,7 +221,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   notificationsAsked: false,
   keepScreenAwake: true,
   fullscreenMode: true,
-  reducedMotion: false,
   fontScale: 1.0,
   dailyFocusGoalMs: 2 * 60 * 60 * 1000, // Default 2 hours
   pomodoroLongBreakMs: 15 * 60 * 1000, // Default 15 minutes

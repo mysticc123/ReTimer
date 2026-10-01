@@ -37,8 +37,7 @@ type BooleanSettingKey =
   | 'hapticsEnabled'
   | 'soundEnabled'
   | 'keepScreenAwake'
-  | 'fullscreenMode'
-  | 'reducedMotion';
+  | 'fullscreenMode';
 
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -141,7 +140,7 @@ export const SettingsScreen: React.FC = () => {
     <View
       style={[
         styles.container,
-        { backgroundColor: colors.background, paddingBottom: insets.bottom },
+        { backgroundColor: colors.background, paddingTop: Math.max(insets.top, spacing.lg), paddingBottom: insets.bottom },
       ]}
     >
       {/* Header */}
@@ -195,24 +194,27 @@ export const SettingsScreen: React.FC = () => {
             Appearance
           </Text>
 
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <View style={[styles.card, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
             <SettingsRow
               label="Theme"
               value={themeName}
               onPress={() => setThemePickerOpen(true)}
               accessibilityLabel={`Theme, ${themeName}`}
+              disableScale
             />
             <SettingsRow
               label="Accent Color"
               value={accentName}
               onPress={() => setAccentPickerOpen(true)}
               accessibilityLabel={`Accent color, ${accentName}`}
+              disableScale
             />
             <SettingsRow
               label="Font"
               value={fontName}
               onPress={() => setFontPickerOpen(true)}
               accessibilityLabel={`Font, ${fontName}`}
+              disableScale
             />
 
             <View style={styles.fontScaleSection}>
@@ -228,6 +230,7 @@ export const SettingsScreen: React.FC = () => {
               <SteppedFontScaleSlider
                 value={settings.fontScale}
                 onChange={(fontScale) => updateSettings({ fontScale })}
+                compact
               />
             </View>
           </View>
@@ -247,24 +250,27 @@ export const SettingsScreen: React.FC = () => {
             Sound & Haptics
           </Text>
 
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <View style={[styles.card, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
             <SettingsSwitchRow
               label="Completion Sound"
               value={settings.soundEnabled}
               onValueChange={(next) => toggleBool('soundEnabled', next)}
               accessibilityLabel="Play a sound when a timer phase finishes"
+              disableScale
             />
             <SettingsRow
               label="Sound Type"
               value={soundName}
               onPress={() => setSoundPickerOpen(true)}
               accessibilityLabel={`Sound type, ${soundName}`}
+              disableScale
             />
             <SettingsSwitchRow
               label="Haptic Feedback"
               value={settings.hapticsEnabled}
               onValueChange={(next) => toggleBool('hapticsEnabled', next)}
               accessibilityLabel="Haptic feedback"
+              disableScale
               showDivider={false}
             />
           </View>
@@ -284,12 +290,13 @@ export const SettingsScreen: React.FC = () => {
             Goals
           </Text>
 
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <View style={[styles.card, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
             <SettingsRow
               label="Daily Target"
               value={formatDurationShort(settings.dailyFocusGoalMs)}
               onPress={() => openDurationEditor('dailyFocusGoalMs', 'Daily Focus Goal', GOAL_MIN_MS, GOAL_MAX_MS, 12)}
               accessibilityLabel={`Daily target, ${formatDurationShort(settings.dailyFocusGoalMs)}`}
+              disableScale
               showDivider={false}
             />
           </View>
@@ -309,12 +316,13 @@ export const SettingsScreen: React.FC = () => {
             Timer Behavior
           </Text>
 
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <View style={[styles.card, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
             <SettingsSwitchRow
               label="Repeat"
               value={settings.timerCompletionBehavior === 'repeat'}
               onValueChange={(next) => toggleBool('timerCompletionBehavior', next)}
               accessibilityLabel="Repeat the countdown automatically when it finishes"
+              disableScale
               showDivider={false}
             />
           </View>
@@ -334,24 +342,20 @@ export const SettingsScreen: React.FC = () => {
             Display
           </Text>
 
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <View style={[styles.card, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
             <SettingsSwitchRow
               label="Keep Screen Awake"
               value={settings.keepScreenAwake}
               onValueChange={(next) => toggleBool('keepScreenAwake', next)}
               accessibilityLabel="Keep screen awake"
+              disableScale
             />
             <SettingsSwitchRow
               label="Fullscreen Mode"
               value={settings.fullscreenMode}
               onValueChange={(next) => toggleBool('fullscreenMode', next)}
               accessibilityLabel="Fullscreen mode"
-            />
-            <SettingsSwitchRow
-              label="Reduced Motion"
-              value={settings.reducedMotion}
-              onValueChange={(next) => toggleBool('reducedMotion', next)}
-              accessibilityLabel="Reduced motion"
+              disableScale
               showDivider={false}
             />
           </View>
@@ -372,11 +376,12 @@ export const SettingsScreen: React.FC = () => {
               Notifications
             </Text>
 
-            <View style={[styles.card, { backgroundColor: colors.surface }]}>
+            <View style={[styles.card, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
               <SettingsRow
                 label="Notification Permission"
                 value={notificationPermission ? 'Granted' : 'Not Granted'}
                 accessibilityLabel={`Notification permission, ${notificationPermission ? 'granted' : 'not granted'}`}
+                disableScale
                 showDivider={exactAlarmRequired}
               />
 
@@ -384,9 +389,11 @@ export const SettingsScreen: React.FC = () => {
                 <>
                   <SettingsRow
                     label="Exact Alarm Access"
-                    value={exactAlarmAvailable ? 'Granted' : 'Required for reliable background notifications'}
+                    value={exactAlarmAvailable ? 'Granted' : 'Required'}
+                    description="Required for reliable background notifications"
                     onPress={handleExactAlarmPress}
                     accessibilityLabel={exactAlarmAvailable ? 'Exact alarm access granted' : 'Open Android settings to grant exact alarm access'}
+                    disableScale
                     showDivider={false}
                   />
                   {checkingExactAlarm && (
@@ -454,7 +461,6 @@ export const SettingsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 50,
   },
   header: {
     flexDirection: 'row',
@@ -491,15 +497,19 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: borderRadius.lg,
+    borderWidth: 1,
     overflow: 'hidden',
   },
   fontScaleSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 48,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
   },
   fontScaleLabel: {
     fontSize: typography.fontSizes.md,
-    marginBottom: spacing.xs,
+    flex: 1,
   },
   checkingIndicator: {
     paddingVertical: spacing.sm,

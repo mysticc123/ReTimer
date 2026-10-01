@@ -1,5 +1,46 @@
 # ReTimer - Premium Fullscreen Focus Timer
 
+## Android Development Toolchain
+
+Android builds use Gradle 8.13 with AGP 8.12.0 and must run on OpenJDK 17.0.20.1. The machine's default Android Studio JBR 25 causes Gradle 8.13 configuration to fail with an unsupported class-file version, so select JDK 17 before running the Android build.
+
+### Development Client Workflow
+
+ReTimer uses native modules, including `react-native-mmkv` v4 and its
+`react-native-nitro-modules` dependency. The installed Android development
+client must therefore be built from the current native dependency graph; Expo
+Go is not a supported substitute.
+
+For JS/TS-only changes, start Metro against the already-installed development
+client:
+
+```powershell
+npx expo start --dev-client
+```
+
+Do not use plain `npx expo start` for this project when testing Android: it can
+open the wrong client and leave the JavaScript bundle paired with an unrelated
+native runtime.
+
+For native dependency, New Architecture, Gradle, or Android configuration
+changes, rebuild the development client first, then start Metro:
+
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+Set-Location android
+.\gradlew.bat :app:assembleDebug
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" install -r .\app\build\outputs\apk\debug\app-debug.apk
+Set-Location ..
+npx expo start --dev-client
+```
+
+The native build must have New Architecture enabled and must autolink
+`react-native-mmkv`, `react-native-nitro-modules`, and `react-native-worklets`.
+If NitroModules errors appear after a native change, verify the generated
+`android/app/build/generated/autolinking` files and reinstall the freshly built
+APK; clearing Metro caches alone cannot add missing native code to an APK.
+
 ## Architecture Overview
 
 ### Project Structure

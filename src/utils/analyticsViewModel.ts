@@ -8,7 +8,9 @@ import type { FocusSession } from '../types';
 import {
   buildDailySummary,
   buildMonthlySummary,
+  buildOverallSummary,
   buildWeeklySummary,
+  buildYearSummary,
   computeStreakInfo,
   filterValidSessions,
   startOfDay,
@@ -49,6 +51,8 @@ export interface AnalyticsViewModel {
   today: AnalyticsPeriodView;
   week: AnalyticsPeriodView;
   month: AnalyticsPeriodView;
+  year: AnalyticsPeriodView;
+  overall: AnalyticsPeriodView;
   currentStreak: number;
   longestStreak: number;
   dailyGoal: DailyGoalProgress;
@@ -68,6 +72,8 @@ export function buildAnalyticsViewModel(
   const today = buildDailySummary(sessions, startOfDay(now));
   const week = buildWeeklySummary(sessions, now);
   const month = buildMonthlySummary(sessions, now);
+  const year = buildYearSummary(sessions, now);
+  const overall = buildOverallSummary(sessions, now);
   const streaks = computeStreakInfo(sessions, now);
 
   const todayFocusedMs = today?.focusedMs ?? 0;
@@ -90,6 +96,14 @@ export function buildAnalyticsViewModel(
     month: {
       focusedMs: month.focusedMs,
       sessionCount: month.sessionCount,
+    },
+    year: {
+      focusedMs: year.focusedMs,
+      sessionCount: year.sessionCount,
+    },
+    overall: {
+      focusedMs: overall.focusedMs,
+      sessionCount: overall.sessionCount,
     },
     currentStreak: streaks.currentStreak,
     longestStreak: streaks.longestStreak,
